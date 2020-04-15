@@ -1,5 +1,6 @@
 .vscode
 /target
+/assets
 
-/assets/*
-!/assets/screenshots/*
+# allow specific directories
+!/assets/screenshots/**
