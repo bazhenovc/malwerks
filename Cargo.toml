@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "malwerks_vk",
+    "malwerks_render",
+    "malwerks_tools",
+    "malwerks_playground",
+]

@@ -1,0 +1,30 @@
+[package]
+name = "malwerks_tools"
+version = "0.1.0"
+authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+malwerks_resources = { path = "../malwerks_resources" }
+serde = "*"
+ash = "*"
+bincode = "*"
+log = "*"
+pretty_env_logger = "*"
+gltf = "*"
+shaderc = "*"
+ultraviolet = "*"
+rayon = "*"
+indicatif = "*"
+
+[[bin]]
+name = "import_gltf"
+path = "src/import_gltf.rs"
+
+[[bin]]
+name = "precompute_brdf"
+path = "src/precompute_brdf.rs"
+
+[[bin]]
+name = "convert_probe"
+path = "src/convert_probe.rs"

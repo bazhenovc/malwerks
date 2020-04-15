@@ -1,0 +1,18 @@
+[package]
+name = "malwerks_playground"
+version = "0.1.0"
+authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
+edition = "2018"
+default-run = "malwerks_playground"
+
+[dependencies]
+malwerks_render = { path = "../malwerks_render" }
+log = "*"
+pretty_env_logger = "*"
+winit = "*"
+imgui = "*"
+gilrs = "*"
+
+[build-dependencies]
+depgraph = "*"
+shaderc = "*"

@@ -1,0 +1,19 @@
+[package]
+name = "malwerks_vk"
+version = "0.1.0"
+authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+ash = "*"
+log = "*"
+winit = "*"
+vk-mem = "*"
+
+[target.'cfg(windows)'.dependencies]
+winapi = "*"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal-rs = "*"
+cocoa = "*"
+objc = "*"
