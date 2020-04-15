@@ -31,23 +31,26 @@ use std::os::raw::{c_char, c_void};
 use crate::frame_context::*;
 use crate::internal::*;
 
+pub enum GraphicsDeviceType {
+    Regular,
+    Headless,
+}
+
 #[allow(dead_code)]
 pub struct GraphicsDevice {
     entry: ash::Entry,
     debug_report: DebugReportCallback,
     instance: ash::Instance,
-    surface: InternalSurface,
-    swapchain: InternalSwapchain,
+    internal_surface: Option<InternalSurface>,
+    internal_swapchain: Option<InternalSwapchain>,
     physical_device: vk::PhysicalDevice,
     device: ash::Device,
     graphics_queue: InternalQueue,
-    //compute_queue: InternalQueue,
-    //transfer_queue: InternalQueue,
     current_gpu_frame: usize,
 }
 
 impl GraphicsDevice {
-    pub fn new(window: &winit::window::Window) -> Self {
+    pub fn new(window: &winit::window::Window, device_type: GraphicsDeviceType) -> Self {
         let entry = ash::Entry::new().unwrap();
         let instance = unsafe {
             let layer_names = [CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
@@ -96,8 +99,15 @@ impl GraphicsDevice {
         };
 
         // Create surface
-        let surface = unsafe { create_surface(&entry, &instance, &window).unwrap() };
-        let surface_loader = Surface::new(&entry, &instance);
+        let (surface, surface_loader) = match device_type {
+            GraphicsDeviceType::Regular => {
+                let surface = unsafe { create_surface(&entry, &instance, &window).unwrap() };
+                let surface_loader = Surface::new(&entry, &instance);
+                (Some(surface), Some(surface_loader))
+            }
+
+            GraphicsDeviceType::Headless => (None, None),
+        };
 
         // Find suitable physical device
         let (physical_device, graphics_queue_index) = {
@@ -140,13 +150,7 @@ impl GraphicsDevice {
                     };
 
                     if supports_needed_extensions {
-                        //log::info!("Suitable physical device: {}", unsafe {
-                        //    let ptr = properties.device_name.as_ptr() as *mut c_char;
-                        //    std::mem::forget(ptr);
-                        //    CString::from_raw(ptr).to_str().unwrap()
-                        //});
                         log::info!("Suitable physical device: {:?}", device);
-
                         Some((device, properties, _features))
                     } else {
                         None
@@ -178,9 +182,19 @@ impl GraphicsDevice {
                         .filter_map(|(index, ref queue_properties)| {
                             let supports_graphics = queue_properties.queue_flags.contains(vk::QueueFlags::GRAPHICS);
                             let supports_compute = queue_properties.queue_flags.contains(vk::QueueFlags::COMPUTE);
-                            let supports_present = surface_loader
-                                .get_physical_device_surface_support(**physical_device, index as u32, surface)
-                                .unwrap_or(false);
+                            let supports_present = match device_type {
+                                GraphicsDeviceType::Regular => surface_loader
+                                    .as_ref()
+                                    .unwrap()
+                                    .get_physical_device_surface_support(
+                                        **physical_device,
+                                        index as u32,
+                                        surface.unwrap(),
+                                    )
+                                    .unwrap_or(false),
+
+                                GraphicsDeviceType::Headless => true,
+                            };
 
                             if supports_graphics && supports_compute && supports_present {
                                 Some((**physical_device, index as u32))
@@ -194,65 +208,6 @@ impl GraphicsDevice {
                 .next()
                 .expect("Couldn't find suitable device.")
         };
-
-        // Pick suitable surface format
-        let surface_format = {
-            let surface_formats = unsafe {
-                surface_loader
-                    .get_physical_device_surface_formats(physical_device, surface)
-                    .unwrap()
-            };
-
-            let fallback_format = surface_formats
-                .iter()
-                .cloned()
-                .map(|format| match format.format {
-                    vk::Format::UNDEFINED => vk::SurfaceFormatKHR {
-                        format: vk::Format::B8G8R8A8_UNORM,
-                        color_space: format.color_space,
-                    },
-
-                    _ => format,
-                })
-                .next()
-                .expect("Unable to find fallback surface format");
-
-            // Try to find SRGB format first
-            surface_formats
-                .iter()
-                .cloned()
-                .map(|format| match format.color_space {
-                    vk::ColorSpaceKHR::SRGB_NONLINEAR => format,
-
-                    _ => fallback_format,
-                })
-                .next()
-                .unwrap_or(fallback_format)
-        };
-
-        log::info!("{:?}", surface_format);
-
-        // Validate surface caps
-        let surface_caps = unsafe {
-            surface_loader
-                .get_physical_device_surface_capabilities(physical_device, surface)
-                .unwrap()
-        };
-
-        //let image_count = surface_caps.min_image_count + 1;
-        let image_count = NUM_BUFFERED_GPU_FRAMES as u32;
-        assert!(image_count >= surface_caps.min_image_count && image_count < surface_caps.max_image_count);
-
-        let pre_transform = if surface_caps
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_caps.current_transform
-        };
-
-        let surface_extent = surface_caps.current_extent;
 
         let device = {
             let device_extensions = [Swapchain::name().as_ptr()];
@@ -277,52 +232,131 @@ impl GraphicsDevice {
             }
         };
 
-        let graphics_queue = unsafe { device.get_device_queue(graphics_queue_index, 0) };
-
-        let present_mode = {
-            let present_modes = unsafe {
-                surface_loader
-                    .get_physical_device_surface_present_modes(physical_device, surface)
-                    .unwrap()
-            };
-
-            present_modes
-                .iter()
-                .cloned()
-                .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
-                .unwrap_or(vk::PresentModeKHR::FIFO)
-        };
-
-        let swapchain_loader = Swapchain::new(&instance, &device);
-
-        let swapchain = unsafe {
-            swapchain_loader
-                .create_swapchain(
-                    &vk::SwapchainCreateInfoKHR::builder()
-                        //.flags(vk::SwapchainCreateFlagsKHR::NONE)
-                        .surface(surface)
-                        .min_image_count(image_count)
-                        .image_format(surface_format.format)
-                        .image_color_space(surface_format.color_space)
-                        .image_extent(surface_extent)
-                        .image_array_layers(1)
-                        .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                        .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                        //.queue_family_indices(...)
-                        .pre_transform(pre_transform)
-                        .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                        .present_mode(present_mode)
-                        .clipped(true)
-                        .build(),
-                    None,
-                )
-                .unwrap()
-        };
-
         // TODO: this is ugly and super unsafe, needs a rework at some point
         unsafe {
             ash_static_init(device.fp_v1_0().clone(), device.fp_v1_1().clone());
         }
+        let graphics_queue = unsafe { device.get_device_queue(graphics_queue_index, 0) };
+
+        let (internal_surface, internal_swapchain) = match device_type {
+            GraphicsDeviceType::Regular => {
+                let (surface, surface_loader) = (surface.unwrap(), surface_loader.unwrap());
+
+                // Pick suitable surface format
+                let surface_format = {
+                    let surface_formats = unsafe {
+                        surface_loader
+                            .get_physical_device_surface_formats(physical_device, surface)
+                            .unwrap()
+                    };
+
+                    let fallback_format = surface_formats
+                        .iter()
+                        .cloned()
+                        .map(|format| match format.format {
+                            vk::Format::UNDEFINED => vk::SurfaceFormatKHR {
+                                format: vk::Format::B8G8R8A8_UNORM,
+                                color_space: format.color_space,
+                            },
+
+                            _ => format,
+                        })
+                        .next()
+                        .expect("Unable to find fallback surface format");
+
+                    // Try to find SRGB format first
+                    surface_formats
+                        .iter()
+                        .cloned()
+                        .map(|format| match format.color_space {
+                            vk::ColorSpaceKHR::SRGB_NONLINEAR => format,
+
+                            _ => fallback_format,
+                        })
+                        .next()
+                        .unwrap_or(fallback_format)
+                };
+
+                log::info!("{:?}", surface_format);
+
+                // Validate surface caps
+                let surface_caps = unsafe {
+                    surface_loader
+                        .get_physical_device_surface_capabilities(physical_device, surface)
+                        .unwrap()
+                };
+
+                //let image_count = surface_caps.min_image_count + 1;
+                let image_count = NUM_BUFFERED_GPU_FRAMES as u32;
+                assert!(image_count >= surface_caps.min_image_count && image_count < surface_caps.max_image_count);
+
+                let pre_transform = if surface_caps
+                    .supported_transforms
+                    .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+                {
+                    vk::SurfaceTransformFlagsKHR::IDENTITY
+                } else {
+                    surface_caps.current_transform
+                };
+
+                let surface_extent = surface_caps.current_extent;
+                let present_mode = {
+                    let present_modes = unsafe {
+                        surface_loader
+                            .get_physical_device_surface_present_modes(physical_device, surface)
+                            .unwrap()
+                    };
+
+                    present_modes
+                        .iter()
+                        .cloned()
+                        .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+                        .unwrap_or(vk::PresentModeKHR::FIFO)
+                };
+
+                let swapchain_loader = Swapchain::new(&instance, &device);
+
+                let swapchain = unsafe {
+                    swapchain_loader
+                        .create_swapchain(
+                            &vk::SwapchainCreateInfoKHR::builder()
+                                //.flags(vk::SwapchainCreateFlagsKHR::NONE)
+                                .surface(surface)
+                                .min_image_count(image_count)
+                                .image_format(surface_format.format)
+                                .image_color_space(surface_format.color_space)
+                                .image_extent(surface_extent)
+                                .image_array_layers(1)
+                                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                                //.queue_family_indices(...)
+                                .pre_transform(pre_transform)
+                                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                                .present_mode(present_mode)
+                                .clipped(true)
+                                .build(),
+                            None,
+                        )
+                        .unwrap()
+                };
+
+                let internal_surface = InternalSurface {
+                    loader: surface_loader,
+                    surface,
+                    format: surface_format,
+                    extent: surface_extent,
+                };
+                let internal_swapchain = InternalSwapchain {
+                    loader: swapchain_loader,
+                    swapchain,
+                    present_mode,
+                };
+
+                (Some(internal_surface), Some(internal_swapchain))
+            }
+
+            GraphicsDeviceType::Headless => (None, None),
+        };
 
         Self {
             entry,
@@ -331,26 +365,14 @@ impl GraphicsDevice {
                 callback: debug_report_callback,
             },
             instance,
-            surface: InternalSurface {
-                loader: surface_loader,
-                surface,
-                format: surface_format,
-                extent: surface_extent,
-            },
-            swapchain: InternalSwapchain {
-                loader: swapchain_loader,
-                swapchain,
-                present_mode,
-            },
+            internal_surface,
+            internal_swapchain,
             physical_device,
             device,
             graphics_queue: InternalQueue {
                 queue: graphics_queue,
                 index: graphics_queue_index,
             },
-            //compute_queue: Queue {
-            //    queue:
-            //},
             current_gpu_frame: 0,
         }
     }
@@ -362,9 +384,10 @@ impl GraphicsDevice {
     }
 
     pub fn acquire_next_image(&mut self, timeout: u64, image_ready_semaphore: vk::Semaphore) -> u32 {
-        let swapchain = &self.swapchain.swapchain;
+        let internal_swapchain = self.internal_swapchain.as_ref().unwrap();
+        let swapchain = &internal_swapchain.swapchain;
         let (image_index, _) = unsafe {
-            self.swapchain
+            internal_swapchain
                 .loader
                 .acquire_next_image(*swapchain, timeout, image_ready_semaphore, vk::Fence::null())
                 .expect("acquire_next_image() failed")
@@ -373,7 +396,8 @@ impl GraphicsDevice {
     }
 
     pub fn present(&mut self, frame_ready_semaphore: vk::Semaphore, image_index: u32) {
-        let swapchain = &self.swapchain.swapchain;
+        let internal_swapchain = self.internal_swapchain.as_ref().unwrap();
+        let swapchain = &internal_swapchain.swapchain;
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(&[frame_ready_semaphore])
             .swapchains(&[*swapchain])
@@ -382,7 +406,7 @@ impl GraphicsDevice {
             .build();
 
         unsafe {
-            self.swapchain
+            internal_swapchain
                 .loader
                 .queue_present(self.graphics_queue.queue, &present_info)
                 .expect("queue_present() failed");
@@ -430,19 +454,19 @@ impl GraphicsDevice {
 
 impl GraphicsDevice {
     pub fn get_surface_format(&self) -> vk::Format {
-        self.surface.format.format
+        self.internal_surface.as_ref().unwrap().format.format
     }
 
     pub fn get_surface_extent(&self) -> vk::Extent2D {
-        self.surface.extent
+        self.internal_surface.as_ref().unwrap().extent
     }
 
     pub fn get_swapchain_loader(&self) -> &ash::extensions::khr::Swapchain {
-        &self.swapchain.loader
+        &self.internal_swapchain.as_ref().unwrap().loader
     }
 
     pub fn get_swapchain(&self) -> vk::SwapchainKHR {
-        self.swapchain.swapchain
+        self.internal_swapchain.as_ref().unwrap().swapchain
     }
 
     pub fn get_physical_device(&self) -> vk::PhysicalDevice {

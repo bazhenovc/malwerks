@@ -65,7 +65,7 @@ impl Drop for Game {
 
 impl Game {
     fn new(window: &winit::window::Window, world_path: &std::path::Path) -> Self {
-        let graphics_device = GraphicsDevice::new(window);
+        let graphics_device = GraphicsDevice::new(window, GraphicsDeviceType::Regular);
         let mut graphics_queue = graphics_device.get_graphics_queue();
         let mut graphics_factory = graphics_device.create_graphics_factory();
 
