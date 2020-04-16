@@ -1,3 +1,8 @@
+// Copyright (c) 2020 Kyrylo Bazhenov
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSView, NSWindow};
 #[cfg(target_os = "macos")]
@@ -31,15 +36,16 @@ use std::os::raw::{c_char, c_void};
 use crate::frame_context::*;
 use crate::internal::*;
 
-pub enum GraphicsDeviceType {
-    Regular,
-    Headless,
+#[derive(Default)]
+pub struct GraphicsDeviceOptions {
+    pub enable_validation: bool,
+    pub enable_ray_tracing_nv: bool,
+    pub _reserved: bool,
 }
 
-#[allow(dead_code)]
 pub struct GraphicsDevice {
-    entry: ash::Entry,
-    debug_report: DebugReportCallback,
+    _entry: ash::Entry,
+    _debug_report: Option<DebugReportCallback>,
     instance: ash::Instance,
     internal_surface: Option<InternalSurface>,
     internal_swapchain: Option<InternalSwapchain>,
@@ -50,37 +56,56 @@ pub struct GraphicsDevice {
 }
 
 impl GraphicsDevice {
-    pub fn new(window: &winit::window::Window, device_type: GraphicsDeviceType) -> Self {
+    pub fn new(window: Option<&winit::window::Window>, options: GraphicsDeviceOptions) -> Self {
         let entry = ash::Entry::new().unwrap();
         let instance = unsafe {
-            let layer_names = [CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
-            let layer_names_ptr: Vec<*const i8> = layer_names.iter().map(|name| name.as_ptr()).collect();
+            let mut layer_name_data = Vec::with_capacity(1);
+            let mut layer_names = Vec::with_capacity(1);
+            if options.enable_validation {
+                layer_name_data.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
+                layer_names.push(layer_name_data.last().unwrap().as_ptr());
+            }
 
-            entry
-                .create_instance(
-                    &vk::InstanceCreateInfo::builder()
-                        .application_info(
-                            &vk::ApplicationInfo::builder()
-                                .application_name(&CString::new("malwerks_game").unwrap())
-                                .application_version(0)
-                                .engine_name(&CString::new("malwerks").unwrap())
-                                .engine_version(0)
-                                .api_version(vk_make_version(1, 1, 0))
-                                .build(),
-                        )
-                        .enabled_layer_names(&layer_names_ptr)
-                        .enabled_extension_names(&get_platform_extension_names())
-                        .build(),
-                    None,
-                )
-                .unwrap()
+            let mut instance_extension_names = Vec::with_capacity(PLATFORM_EXTENSION_NAME_COUNT + 2);
+            if window.is_some() {
+                for ext in get_platform_extension_names().iter() {
+                    instance_extension_names.push(*ext);
+                }
+            }
+            if options.enable_validation {
+                instance_extension_names.push(DebugReport::name().as_ptr());
+            }
+            if options.enable_ray_tracing_nv {
+                instance_extension_names.push(vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr());
+            }
+
+            let application_name = CString::new("malwerks_game").unwrap();
+            let engine_name = CString::new("malwerks").unwrap();
+            let application_info = vk::ApplicationInfo::builder()
+                .application_name(&application_name)
+                .application_version(0)
+                .engine_name(&engine_name)
+                .engine_version(0)
+                .api_version(vk_make_version(1, 1, 0))
+                .build();
+
+            let mut instance_create_info = vk::InstanceCreateInfo::builder().application_info(&application_info);
+            if !layer_names.is_empty() {
+                instance_create_info = instance_create_info.enabled_layer_names(&layer_names);
+            }
+            if !instance_extension_names.is_empty() {
+                log::info!("requested instance extensions: {:?}", &instance_extension_names);
+                instance_create_info = instance_create_info.enabled_extension_names(&instance_extension_names);
+            }
+
+            entry.create_instance(&instance_create_info.build(), None).unwrap()
         };
 
-        let (debug_report_loader, debug_report_callback) = {
-            let debug_report_loader = DebugReport::new(&entry, &instance);
+        let debug_report = if options.enable_validation {
+            let loader = DebugReport::new(&entry, &instance);
 
-            let debug_report_callback = unsafe {
-                debug_report_loader
+            let callback = unsafe {
+                loader
                     .create_debug_report_callback(
                         &vk::DebugReportCallbackCreateInfoEXT::builder()
                             .flags(
@@ -95,18 +120,20 @@ impl GraphicsDevice {
                     .unwrap()
             };
 
-            (debug_report_loader, debug_report_callback)
+            Some(DebugReportCallback { loader, callback })
+        } else {
+            None
         };
 
         // Create surface
-        let (surface, surface_loader) = match device_type {
-            GraphicsDeviceType::Regular => {
+        let (surface, surface_loader) = match window {
+            Some(window) => {
                 let surface = unsafe { create_surface(&entry, &instance, &window).unwrap() };
                 let surface_loader = Surface::new(&entry, &instance);
                 (Some(surface), Some(surface_loader))
             }
 
-            GraphicsDeviceType::Headless => (None, None),
+            None => (None, None),
         };
 
         // Find suitable physical device
@@ -132,18 +159,11 @@ impl GraphicsDevice {
                         let mut supports_vk_khr_swapchain = false;
 
                         let extensions = unsafe { instance.enumerate_device_extension_properties(*device) };
-                        for _extension in extensions.unwrap() {
-                            //let extension_name_c = unsafe {
-                            //    let ptr = extension.extension_name.as_ptr() as *mut c_char;
-                            //    std::mem::forget(ptr);
-                            //    CString::from_raw(ptr)
-                            //};
-
-                            //let extension_name = extension_name_c.to_str().unwrap();
-                            //log::info!("{:?}", extension_name);
-
-                            //supports_vk_khr_swapchain |= extension_name == "VK_KHR_swapchain";
-                            supports_vk_khr_swapchain = true;
+                        for extension in extensions.unwrap() {
+                            supports_vk_khr_swapchain |= unsafe {
+                                libc::strcmp(extension.extension_name.as_ptr(), vk::KhrSwapchainFn::name().as_ptr())
+                                    == 0
+                            };
                         }
 
                         supports_vk_khr_swapchain
@@ -182,8 +202,8 @@ impl GraphicsDevice {
                         .filter_map(|(index, ref queue_properties)| {
                             let supports_graphics = queue_properties.queue_flags.contains(vk::QueueFlags::GRAPHICS);
                             let supports_compute = queue_properties.queue_flags.contains(vk::QueueFlags::COMPUTE);
-                            let supports_present = match device_type {
-                                GraphicsDeviceType::Regular => surface_loader
+                            let supports_present = match window {
+                                Some(_) => surface_loader
                                     .as_ref()
                                     .unwrap()
                                     .get_physical_device_surface_support(
@@ -193,7 +213,7 @@ impl GraphicsDevice {
                                     )
                                     .unwrap_or(false),
 
-                                GraphicsDeviceType::Headless => true,
+                                None => true,
                             };
 
                             if supports_graphics && supports_compute && supports_present {
@@ -210,8 +230,6 @@ impl GraphicsDevice {
         };
 
         let device = {
-            let device_extensions = [Swapchain::name().as_ptr()];
-
             let device_features = vk::PhysicalDeviceFeatures { ..Default::default() };
 
             let queue_priorities = [1.0];
@@ -220,26 +238,42 @@ impl GraphicsDevice {
                 .queue_priorities(&queue_priorities)
                 .build()];
 
-            let device_create_info = vk::DeviceCreateInfo::builder()
+            let mut device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_create_info)
-                .enabled_extension_names(&device_extensions)
                 .enabled_features(&device_features);
+
+            let mut device_extension_names = Vec::with_capacity(3);
+            if window.is_some() {
+                device_extension_names.push(Swapchain::name().as_ptr());
+            }
+            if options.enable_ray_tracing_nv {
+                device_extension_names.push(vk::KhrGetMemoryRequirements2Fn::name().as_ptr());
+                device_extension_names.push(vk::NvRayTracingFn::name().as_ptr());
+            }
+
+            if !device_extension_names.is_empty() {
+                log::info!("requested device extensions: {:?}", &device_extension_names);
+                device_create_info = device_create_info.enabled_extension_names(&device_extension_names);
+            }
 
             unsafe {
                 instance
-                    .create_device(physical_device, &device_create_info, None)
+                    .create_device(physical_device, &device_create_info.build(), None)
                     .unwrap()
             }
         };
 
         // TODO: this is ugly and super unsafe, needs a rework at some point
         unsafe {
-            ash_static_init(device.fp_v1_0().clone(), device.fp_v1_1().clone());
+            let ray_tracing_nv = vk::NvRayTracingFn::load(|name| {
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), name.as_ptr()))
+            });
+            ash_static_init(device.fp_v1_0().clone(), device.fp_v1_1().clone(), ray_tracing_nv);
         }
         let graphics_queue = unsafe { device.get_device_queue(graphics_queue_index, 0) };
 
-        let (internal_surface, internal_swapchain) = match device_type {
-            GraphicsDeviceType::Regular => {
+        let (internal_surface, internal_swapchain) = match window {
+            Some(_) => {
                 let (surface, surface_loader) = (surface.unwrap(), surface_loader.unwrap());
 
                 // Pick suitable surface format
@@ -355,15 +389,12 @@ impl GraphicsDevice {
                 (Some(internal_surface), Some(internal_swapchain))
             }
 
-            GraphicsDeviceType::Headless => (None, None),
+            None => (None, None),
         };
 
         Self {
-            entry,
-            debug_report: DebugReportCallback {
-                loader: debug_report_loader,
-                callback: debug_report_callback,
-            },
+            _entry: entry,
+            _debug_report: debug_report,
             instance,
             internal_surface,
             internal_swapchain,
@@ -492,6 +523,16 @@ impl GraphicsDevice {
     pub fn create_graphics_factory(&self) -> crate::graphics_factory::GraphicsFactory {
         crate::graphics_factory::GraphicsFactory::new(self.device.clone(), self.instance.clone(), self.physical_device)
     }
+
+    pub fn get_ray_tracing_properties(&self) -> vk::PhysicalDeviceRayTracingPropertiesNV {
+        let mut ray_tracing_properties = vk::PhysicalDeviceRayTracingPropertiesNV::default();
+        let mut properties = vk::PhysicalDeviceProperties2::builder().push_next(&mut ray_tracing_properties);
+        unsafe {
+            self.instance
+                .get_physical_device_properties2(self.physical_device, &mut properties);
+        }
+        ray_tracing_properties
+    }
 }
 
 #[allow(dead_code)]
@@ -520,31 +561,21 @@ struct DebugReportCallback {
     callback: vk::DebugReportCallbackEXT,
 }
 
+const PLATFORM_EXTENSION_NAME_COUNT: usize = 2;
+
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-fn get_platform_extension_names() -> Vec<*const i8> {
-    vec![
-        Surface::name().as_ptr(),
-        XlibSurface::name().as_ptr(),
-        DebugReport::name().as_ptr(),
-    ]
+fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] {
+    [Surface::name().as_ptr(), XlibSurface::name().as_ptr()]
 }
 
 #[cfg(target_os = "macos")]
-fn get_platform_extension_names() -> Vec<*const i8> {
-    vec![
-        Surface::name().as_ptr(),
-        MacOSSurface::name().as_ptr(),
-        DebugReport::name().as_ptr(),
-    ]
+fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] {
+    [Surface::name().as_ptr(), MacOSSurface::name().as_ptr()]
 }
 
 #[cfg(all(windows))]
-fn get_platform_extension_names() -> Vec<*const i8> {
-    vec![
-        Surface::name().as_ptr(),
-        Win32Surface::name().as_ptr(),
-        DebugReport::name().as_ptr(),
-    ]
+fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] {
+    [Surface::name().as_ptr(), Win32Surface::name().as_ptr()]
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]

@@ -1,3 +1,8 @@
+// Copyright (c) 2020 Kyrylo Bazhenov
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 use crate::internal::*;
 
 use ash::vk;
@@ -32,7 +37,7 @@ impl CommandBuffer {
             let error_code = ash_static().fp_10.reset_command_buffer(self.0, std::mem::transmute(0));
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("reset_command_buffer() failed"),
+                _ => panic!("reset_command_buffer() failed: {:?}", error_code),
             }
         }
     }
@@ -43,7 +48,7 @@ impl CommandBuffer {
             let error_code = ash_static().fp_10.reset_command_buffer(self.0, flags);
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("reset_command_buffer() failed"),
+                _ => panic!("reset_command_buffer() failed: {:?}", error_code),
             }
         }
     }
@@ -54,7 +59,7 @@ impl CommandBuffer {
             let error_code = ash_static().fp_10.begin_command_buffer(self.0, begin_info);
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("begin_command_buffer() failed"),
+                _ => panic!("begin_command_buffer() failed: {:?}", error_code),
             }
         }
     }
@@ -65,7 +70,7 @@ impl CommandBuffer {
             let error_code = ash_static().fp_10.end_command_buffer(self.0);
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("end_command_buffer() failed"),
+                _ => panic!("end_command_buffer() failed: {:?}", error_code),
             }
         }
     }
@@ -618,6 +623,114 @@ impl CommandBuffer {
                 regions.len() as _,
                 regions.as_ptr(),
             );
+        }
+    }
+}
+
+// ray tracing nv
+
+impl CommandBuffer {
+    #[allow(clippy::too_many_arguments)]
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdBuildAccelerationStructureNV.html>"]
+    pub fn build_acceleration_structure_nv(
+        &mut self,
+        info: &vk::AccelerationStructureInfoNV,
+        instance_data: vk::Buffer,
+        instance_offset: vk::DeviceSize,
+        update: bool,
+        dst: vk::AccelerationStructureNV,
+        src: vk::AccelerationStructureNV,
+        scratch: vk::Buffer,
+        scratch_offset: vk::DeviceSize,
+    ) {
+        unsafe {
+            ash_static().ray_tracing_nv.cmd_build_acceleration_structure_nv(
+                self.0,
+                info,
+                instance_data,
+                instance_offset,
+                if update { vk::TRUE } else { vk::FALSE },
+                dst,
+                src,
+                scratch,
+                scratch_offset,
+            );
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdCopyAccelerationStructureNV.html>"]
+    pub fn copy_acceleration_structure_nv(
+        &mut self,
+        dst: vk::AccelerationStructureNV,
+        src: vk::AccelerationStructureNV,
+        mode: vk::CopyAccelerationStructureModeNV,
+    ) {
+        unsafe {
+            ash_static()
+                .ray_tracing_nv
+                .cmd_copy_acceleration_structure_nv(self.0, dst, src, mode);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdTraceRaysNV.html>"]
+    pub fn trace_rays_nv(
+        &mut self,
+        raygen_shader_binding_table_buffer: vk::Buffer,
+        raygen_shader_binding_offset: vk::DeviceSize,
+        miss_shader_binding_table_buffer: vk::Buffer,
+        miss_shader_binding_offset: vk::DeviceSize,
+        miss_shader_binding_stride: vk::DeviceSize,
+        hit_shader_binding_table_buffer: vk::Buffer,
+        hit_shader_binding_offset: vk::DeviceSize,
+        hit_shader_binding_stride: vk::DeviceSize,
+        callable_shader_binding_table_buffer: vk::Buffer,
+        callable_shader_binding_offset: vk::DeviceSize,
+        callable_shader_binding_stride: vk::DeviceSize,
+        width: u32,
+        height: u32,
+        depth: u32,
+    ) {
+        unsafe {
+            ash_static().ray_tracing_nv.cmd_trace_rays_nv(
+                self.0,
+                raygen_shader_binding_table_buffer,
+                raygen_shader_binding_offset,
+                miss_shader_binding_table_buffer,
+                miss_shader_binding_offset,
+                miss_shader_binding_stride,
+                hit_shader_binding_table_buffer,
+                hit_shader_binding_offset,
+                hit_shader_binding_stride,
+                callable_shader_binding_table_buffer,
+                callable_shader_binding_offset,
+                callable_shader_binding_stride,
+                width,
+                height,
+                depth,
+            );
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdWriteAccelerationStructuresPropertiesNV.html>"]
+    pub fn write_acceleration_structures_properties_nv(
+        &mut self,
+        structures: &[vk::AccelerationStructureNV],
+        query_type: vk::QueryType,
+        query_pool: vk::QueryPool,
+        first_query: u32,
+    ) {
+        unsafe {
+            ash_static()
+                .ray_tracing_nv
+                .cmd_write_acceleration_structures_properties_nv(
+                    self.0,
+                    structures.len() as u32,
+                    structures.as_ptr(),
+                    query_type,
+                    query_pool,
+                    first_query,
+                );
         }
     }
 }

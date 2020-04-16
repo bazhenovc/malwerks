@@ -1,7 +1,13 @@
+// Copyright (c) 2020 Kyrylo Bazhenov
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
 use ash::version::*;
 use ash::vk;
 
 use crate::command_buffer::*;
+use crate::internal::*;
 
 pub struct GraphicsFactory {
     device: ash::Device,
@@ -161,7 +167,7 @@ impl GraphicsFactory {
             );
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("allocate_command_buffers() failed"),
+                _ => panic!("allocate_command_buffers() failed: {:?}", error_code),
             }
 
             command_buffers
@@ -547,6 +553,157 @@ impl GraphicsFactory {
     pub fn destroy_descriptor_set_layout(&mut self, layout: vk::DescriptorSetLayout) {
         unsafe {
             self.device.destroy_descriptor_set_layout(layout, None);
+        }
+    }
+}
+
+// ray tracing nv
+
+impl GraphicsFactory {
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateRayTracingPipelinesNV.html>"]
+    pub fn create_ray_tracing_pipelines_nv(
+        &mut self,
+        pipeline_cache: vk::PipelineCache,
+        create_info: &[vk::RayTracingPipelineCreateInfoNV],
+    ) -> Vec<vk::Pipeline> {
+        unsafe {
+            use ash::RawPtr;
+
+            let allocation_callbacks = None;
+            let mut pipelines = vec![std::mem::zeroed(); create_info.len()];
+            let err_code = ash_static().ray_tracing_nv.create_ray_tracing_pipelines_nv(
+                self.device.handle(),
+                pipeline_cache,
+                create_info.len() as u32,
+                create_info.as_ptr(),
+                allocation_callbacks.as_raw_ptr(),
+                pipelines.as_mut_ptr(),
+            );
+            match err_code {
+                vk::Result::SUCCESS => pipelines,
+                _ => panic!("create_ray_tracing_pipelines_nv() failed: {:?}", err_code),
+            }
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateAccelerationStructureNV.html>"]
+    pub fn create_acceleration_structure_nv(
+        &mut self,
+        create_info: &vk::AccelerationStructureCreateInfoNV,
+    ) -> vk::AccelerationStructureNV {
+        unsafe {
+            use ash::RawPtr;
+
+            let allocation_callbacks = None;
+            let mut acceleration_structure = std::mem::zeroed();
+            let err_code = ash_static().ray_tracing_nv.create_acceleration_structure_nv(
+                self.device.handle(),
+                create_info,
+                allocation_callbacks.as_raw_ptr(),
+                &mut acceleration_structure,
+            );
+            match err_code {
+                vk::Result::SUCCESS => acceleration_structure,
+                _ => panic!("create_acceleration_structure_nv() failed: {:?}", err_code),
+            }
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDestroyAccelerationStructureNV.html>"]
+    pub fn destroy_acceleration_structure_nv(&mut self, acceleration_structure: vk::AccelerationStructureNV) {
+        unsafe {
+            use ash::RawPtr;
+
+            let allocation_callbacks = None;
+            ash_static().ray_tracing_nv.destroy_acceleration_structure_nv(
+                self.device.handle(),
+                acceleration_structure,
+                allocation_callbacks.as_raw_ptr(),
+            );
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureMemoryRequirementsNV.html>"]
+    pub fn get_acceleration_structure_memory_requirements_nv(
+        &mut self,
+        info: &vk::AccelerationStructureMemoryRequirementsInfoNV,
+    ) -> vk::MemoryRequirements2KHR {
+        unsafe {
+            let mut requirements = std::mem::zeroed();
+            ash_static()
+                .ray_tracing_nv
+                .get_acceleration_structure_memory_requirements_nv(self.device.handle(), info, &mut requirements);
+            requirements
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkBindAccelerationStructureMemoryNV.html>"]
+    pub fn bind_acceleration_structure_memory_nv(&mut self, bind_info: &[vk::BindAccelerationStructureMemoryInfoNV]) {
+        unsafe {
+            let err_code = ash_static().ray_tracing_nv.bind_acceleration_structure_memory_nv(
+                self.device.handle(),
+                bind_info.len() as u32,
+                bind_info.as_ptr(),
+            );
+            match err_code {
+                vk::Result::SUCCESS => {}
+                _ => panic!("bind_acceleration_structure_memory_nv() failed: {:?}", err_code),
+            }
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCompileDeferredNV.html>"]
+    pub fn compile_deferred_nv(&self, pipeline: vk::Pipeline, shader: u32) {
+        unsafe {
+            let err_code = ash_static()
+                .ray_tracing_nv
+                .compile_deferred_nv(self.device.handle(), pipeline, shader);
+            match err_code {
+                vk::Result::SUCCESS => {}
+                _ => panic!("compile_deferred_nv() failed: {:?}", err_code),
+            }
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetRayTracingShaderGroupHandlesNV.html>"]
+    pub fn get_ray_tracing_shader_group_handles_nv(
+        &mut self,
+        pipeline: vk::Pipeline,
+        first_group: u32,
+        group_count: u32,
+        data: &mut [u8],
+    ) {
+        unsafe {
+            let err_code = ash_static().ray_tracing_nv.get_ray_tracing_shader_group_handles_nv(
+                self.device.handle(),
+                pipeline,
+                first_group,
+                group_count,
+                data.len(),
+                data.as_mut_ptr() as *mut std::ffi::c_void,
+            );
+            match err_code {
+                vk::Result::SUCCESS => {}
+                _ => panic!("get_ray_tracing_shader_group_handles_nv() failed: {:?}", err_code),
+            }
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetAccelerationStructureHandleNV.html>"]
+    pub fn get_acceleration_structure_handle_nv(&mut self, acceleration_structure: vk::AccelerationStructureNV) -> u64 {
+        unsafe {
+            let mut handle: u64 = 0;
+            let handle_ptr: *mut u64 = &mut handle;
+            let err_code = ash_static().ray_tracing_nv.get_acceleration_structure_handle_nv(
+                self.device.handle(),
+                acceleration_structure,
+                std::mem::size_of::<u64>(),
+                handle_ptr as *mut std::ffi::c_void,
+            );
+            match err_code {
+                vk::Result::SUCCESS => handle,
+                _ => panic!("get_acceleration_structure_handle_nv() failed: {:?}", err_code),
+            }
         }
     }
 }

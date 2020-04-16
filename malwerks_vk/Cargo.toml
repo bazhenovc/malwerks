@@ -9,6 +9,7 @@ ash = "*"
 log = "*"
 winit = "*"
 vk-mem = "*"
+libc = "*"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"

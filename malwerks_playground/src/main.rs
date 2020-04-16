@@ -65,7 +65,13 @@ impl Drop for Game {
 
 impl Game {
     fn new(window: &winit::window::Window, world_path: &std::path::Path) -> Self {
-        let graphics_device = GraphicsDevice::new(window, GraphicsDeviceType::Regular);
+        let graphics_device = GraphicsDevice::new(
+            Some(window),
+            GraphicsDeviceOptions {
+                enable_validation: true,
+                ..Default::default()
+            },
+        );
         let mut graphics_queue = graphics_device.get_graphics_queue();
         let mut graphics_factory = graphics_device.create_graphics_factory();
 
@@ -287,9 +293,8 @@ fn main() {
 
     pretty_env_logger::init();
 
-    log::info!("resource path set to {:?}", &resource_path);
-
     let args: Vec<String> = std::env::args().collect();
+    log::info!("resource path set to {:?}", &resource_path);
     log::info!("command line: {:?}", args);
 
     if args.len() < 2 {
