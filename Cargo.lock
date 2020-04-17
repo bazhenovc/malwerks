@@ -196,23 +196,8 @@ checksum = "f29f7768b2d1be17b96158e3285951d366b40211320fb30826a76cb7a0da6400"
 dependencies = [
  "bitflags",
  "block",
- "core-foundation 0.6.4",
+ "core-foundation",
  "core-graphics 0.17.3",
- "foreign-types",
- "libc",
- "objc",
-]
-
-[[package]]
-name = "cocoa"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a4736c86d51bd878b474400d9ec888156f4037015f5d09794fab9f26eab1ad4"
-dependencies = [
- "bitflags",
- "block",
- "core-foundation 0.7.0",
- "core-graphics 0.19.0",
  "foreign-types",
  "libc",
  "objc",
@@ -240,17 +225,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25b9e03f145fd4f2bf705e07b900cd41fc636598fe5dc452fd0db1441c3f496d"
 dependencies = [
- "core-foundation-sys 0.6.2",
- "libc",
-]
-
-[[package]]
-name = "core-foundation"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57d24c7a13c43e870e37c1556b74555437870a04514f7685f5b354e090567171"
-dependencies = [
- "core-foundation-sys 0.7.0",
+ "core-foundation-sys",
  "libc",
 ]
 
@@ -261,19 +236,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7ca8a5221364ef15ce201e8ed2f609fc312682a8f4e0e3d4aa5879764e0fa3b"
 
 [[package]]
-name = "core-foundation-sys"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
-
-[[package]]
 name = "core-graphics"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e54c4ab33705fa1fc8af375bb7929d68e1c1546c1ecef408966d8c3e49a1d84a"
 dependencies = [
  "bitflags",
- "core-foundation 0.6.4",
+ "core-foundation",
  "foreign-types",
  "libc",
 ]
@@ -285,19 +254,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56790968ab1c8a1202a102e6de05fc6e1ec87da99e4e93e9a7d13efbfc1e95a9"
 dependencies = [
  "bitflags",
- "core-foundation 0.6.4",
- "foreign-types",
- "libc",
-]
-
-[[package]]
-name = "core-graphics"
-version = "0.19.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59e78b2e0aaf43f08e7ae0d6bc96895ef72ff0921c7d4ff4762201b2dba376dd"
-dependencies = [
- "bitflags",
- "core-foundation 0.7.0",
+ "core-foundation",
  "foreign-types",
  "libc",
 ]
@@ -309,7 +266,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8dc065219542086f72d1e9f7aadbbab0989e980263695d129d502082d063a9d0"
 dependencies = [
  "cfg-if",
- "core-foundation-sys 0.6.2",
+ "core-foundation-sys",
  "core-graphics 0.17.3",
  "libc",
  "objc",
@@ -505,7 +462,7 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdd4ea2d919ecb594362fa26b0f172729b9ee9b95e407fbad95e0a49cadc143"
 dependencies = [
- "core-foundation 0.6.4",
+ "core-foundation",
  "io-kit-sys",
  "libc",
  "libudev-sys",
@@ -648,7 +605,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f21dcc74995dd4cd090b147e79789f8d65959cbfb5f0b118002db869ea3bd0a0"
 dependencies = [
- "core-foundation-sys 0.6.2",
+ "core-foundation-sys",
  "mach",
 ]
 
@@ -773,13 +730,19 @@ dependencies = [
 name = "malwerks_playground"
 version = "0.1.0"
 dependencies = [
+ "ash",
+ "cocoa 0.19.1",
  "depgraph",
  "gilrs",
  "imgui",
  "log",
  "malwerks_render",
+ "malwerks_vk",
+ "metal-rs",
+ "objc",
  "pretty_env_logger",
  "shaderc",
+ "winapi 0.3.8",
  "winit",
 ]
 
@@ -826,14 +789,9 @@ name = "malwerks_vk"
 version = "0.1.0"
 dependencies = [
  "ash",
- "cocoa 0.20.0",
  "libc",
  "log",
- "metal-rs",
- "objc",
  "vk-mem",
- "winapi 0.3.8",
- "winit",
 ]
 
 [[package]]
@@ -1752,7 +1710,7 @@ dependencies = [
  "android_glue",
  "bitflags",
  "cocoa 0.19.1",
- "core-foundation 0.6.4",
+ "core-foundation",
  "core-graphics 0.17.3",
  "core-video-sys",
  "dispatch",

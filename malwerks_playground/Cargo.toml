@@ -6,7 +6,9 @@ edition = "2018"
 default-run = "malwerks_playground"
 
 [dependencies]
+malwerks_vk = { path = "../malwerks_vk" }
 malwerks_render = { path = "../malwerks_render" }
+ash = "*"
 log = "*"
 pretty_env_logger = "*"
 winit = "*"
@@ -16,3 +18,11 @@ gilrs = "*"
 [build-dependencies]
 depgraph = "*"
 shaderc = "*"
+
+[target.'cfg(windows)'.dependencies]
+winapi = "*"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal-rs = "*"
+cocoa = "*"
+objc = "*"

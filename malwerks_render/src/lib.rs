@@ -9,7 +9,6 @@
 #[macro_use]
 mod render_pass;
 
-mod backbuffer_pass;
 mod camera;
 mod forward_pass;
 mod post_process;
@@ -18,7 +17,6 @@ mod shared_frame_data;
 mod sky_box;
 mod static_scenery;
 
-pub use backbuffer_pass::*;
 pub use camera::*;
 pub use forward_pass::*;
 pub use post_process::*;

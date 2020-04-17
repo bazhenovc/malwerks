@@ -5,7 +5,6 @@
 
 use malwerks_vk::*;
 
-use crate::backbuffer_pass::*;
 use crate::forward_pass::*;
 use crate::render_pass::*;
 
@@ -25,13 +24,16 @@ pub struct PostProcess {
 }
 
 impl PostProcess {
-    pub fn new(
+    pub fn new<T>(
         vert_code: &[u32],
         frag_code: &[u32],
-        forward_pass: &ForwardPass,
-        backbuffer_pass: &BackbufferPass,
+        source_pass: &ForwardPass, // TODO: make it a generic render pass
+        destination_pass: &T,
         factory: &mut GraphicsFactory,
-    ) -> Self {
+    ) -> Self
+    where
+        T: RenderPass,
+    {
         let vert_module = factory.create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(vert_code).build());
         let frag_module = factory.create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(frag_code).build());
 
@@ -122,7 +124,7 @@ impl PostProcess {
                     .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
-                        .image_view(forward_pass.get_color_image_view())
+                        .image_view(source_pass.get_color_image_view())
                         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .build()])
                     .build(),
@@ -192,7 +194,7 @@ impl PostProcess {
                         .build(),
                 )
                 .layout(pipeline_layout)
-                .render_pass(backbuffer_pass.get_render_pass())
+                .render_pass(destination_pass.get_render_pass())
                 .subpass(0)
                 .base_pipeline_handle(vk::Pipeline::null())
                 .base_pipeline_index(0)
@@ -223,8 +225,11 @@ impl PostProcess {
         factory.destroy_pipeline(self.pipeline);
     }
 
-    pub fn render(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, backbuffer_pass: &mut BackbufferPass) {
-        let command_buffer = backbuffer_pass.get_command_buffer(frame_context);
+    pub fn render<T>(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, destination_pass: &mut T)
+    where
+        T: RenderPass,
+    {
+        let command_buffer = destination_pass.get_command_buffer(frame_context);
 
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         command_buffer.bind_descriptor_sets(

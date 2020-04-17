@@ -5,6 +5,8 @@
 
 use malwerks_render::*;
 
+use crate::surface_pass::*;
+
 #[allow(dead_code)]
 pub struct ImguiGraphics {
     font_image: HeapAllocatedResource<vk::Image>,
@@ -40,7 +42,7 @@ impl ImguiGraphics {
 
     pub fn new(
         imgui: &mut imgui::Context,
-        pass: &BackbufferPass,
+        pass: &SurfacePass,
         _device: &GraphicsDevice,
         factory: &mut GraphicsFactory,
         command_buffer: &mut CommandBuffer,

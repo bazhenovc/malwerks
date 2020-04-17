@@ -7,14 +7,5 @@ edition = "2018"
 [dependencies]
 ash = "*"
 log = "*"
-winit = "*"
 vk-mem = "*"
 libc = "*"
-
-[target.'cfg(windows)'.dependencies]
-winapi = "*"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-metal-rs = "*"
-cocoa = "*"
-objc = "*"

@@ -3,23 +3,23 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_vk::*;
+use malwerks_render::*;
 
-use crate::render_pass::*;
+use crate::surface_winit::*;
 
-pub struct BackbufferPass {
+pub struct SurfacePass {
     base_pass: BaseRenderPass,
     _images: Vec<vk::Image>,
     _image_views: Vec<vk::ImageView>,
     image_ready_semaphore: FrameLocal<vk::Semaphore>,
 }
 
-impl BackbufferPass {
-    pub fn new(device: &GraphicsDevice, factory: &mut GraphicsFactory) -> Self {
+impl SurfacePass {
+    pub fn new(surface: &SurfaceWinit, device: &GraphicsDevice, factory: &mut GraphicsFactory) -> Self {
         let swapchain_images = unsafe {
-            device
+            surface
                 .get_swapchain_loader()
-                .get_swapchain_images(device.get_swapchain())
+                .get_swapchain_images(surface.get_swapchain())
                 .unwrap()
         };
         let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
@@ -28,7 +28,7 @@ impl BackbufferPass {
                 factory.create_image_view(
                     &vk::ImageViewCreateInfo::builder()
                         .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(device.get_surface_format())
+                        .format(surface.get_surface_format())
                         .components(Default::default())
                         .subresource_range(vk::ImageSubresourceRange {
                             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -48,7 +48,7 @@ impl BackbufferPass {
                 .flags(Default::default())
                 .attachments(&[vk::AttachmentDescription::builder()
                     .flags(Default::default())
-                    .format(device.get_surface_format())
+                    .format(surface.get_surface_format())
                     .samples(vk::SampleCountFlags::TYPE_1)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
@@ -87,8 +87,8 @@ impl BackbufferPass {
                     .flags(Default::default())
                     .render_pass(render_pass)
                     .attachments(&swapchain_image_views[frame_index..=frame_index])
-                    .width(device.get_surface_extent().width)
-                    .height(device.get_surface_extent().height)
+                    .width(surface.get_surface_extent().width)
+                    .height(surface.get_surface_extent().height)
                     .layers(1)
                     .build(),
             )
@@ -121,12 +121,12 @@ impl BackbufferPass {
         *self.image_ready_semaphore.get(frame_context)
     }
 
-    pub fn get_base_pass(&self) -> &BaseRenderPass {
-        &self.base_pass
-    }
+    //pub fn get_base_pass(&self) -> &BaseRenderPass {
+    //    &self.base_pass
+    //}
 }
 
-impl RenderPass for BackbufferPass {
+impl RenderPass for SurfacePass {
     fn begin(
         &mut self,
         frame_context: &FrameContext,

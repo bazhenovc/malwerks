@@ -9,6 +9,9 @@ mod imgui_graphics;
 mod imgui_winit;
 mod input_map;
 
+mod surface_pass;
+mod surface_winit;
+
 use malwerks_render::*;
 
 const RENDER_WIDTH: u32 = 1920;
@@ -33,9 +36,11 @@ struct Game {
     graphics_factory: GraphicsFactory,
     graphics_queue: DeviceQueue,
 
+    surface: surface_winit::SurfaceWinit,
+    surface_pass: surface_pass::SurfacePass,
+
     // TODO: remove and implement transfer queue
     temporary_command_buffer: TemporaryCommandBuffer,
-    backbuffer_pass: BackbufferPass,
 
     imgui: imgui::Context,
     imgui_platform: imgui_winit::WinitPlatform,
@@ -55,10 +60,12 @@ impl Drop for Game {
         self.graphics_device.wait_idle();
 
         self.temporary_command_buffer.destroy(&mut self.graphics_factory);
-        self.backbuffer_pass.destroy(&mut self.graphics_factory);
         self.imgui_graphics.destroy(&mut self.graphics_factory);
         self.render_world.destroy(&mut self.graphics_factory);
         self.post_process.destroy(&mut self.graphics_factory);
+
+        self.surface_pass.destroy(&mut self.graphics_factory);
+        self.surface.destroy(&mut self.graphics_factory);
         self.graphics_device.wait_idle();
     }
 }
@@ -66,7 +73,9 @@ impl Drop for Game {
 impl Game {
     fn new(window: &winit::window::Window, world_path: &std::path::Path) -> Self {
         let graphics_device = GraphicsDevice::new(
-            Some(window),
+            GraphicsSurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
+                surface_winit::create_surface(entry, instance, window).expect("failed to create KHR surface")
+            }),
             GraphicsDeviceOptions {
                 enable_validation: true,
                 ..Default::default()
@@ -92,13 +101,14 @@ impl Game {
             )[0],
         };
 
-        let backbuffer_pass = BackbufferPass::new(&graphics_device, &mut graphics_factory);
+        let surface = surface_winit::SurfaceWinit::new(&graphics_device);
+        let surface_pass = surface_pass::SurfacePass::new(&surface, &graphics_device, &mut graphics_factory);
 
         let mut imgui = imgui::Context::create();
         let mut imgui_platform = imgui_winit::WinitPlatform::init(&mut imgui);
         let imgui_graphics = imgui_graphics::ImguiGraphics::new(
             &mut imgui,
-            &backbuffer_pass,
+            &surface_pass,
             &graphics_device,
             &mut graphics_factory,
             &mut temporary_command_buffer.command_buffer,
@@ -131,7 +141,7 @@ impl Game {
             &include_spirv!("/shaders/post_process.vert.spv"),
             &include_spirv!("/shaders/post_process.frag.spv"),
             render_world.get_render_pass(),
-            &backbuffer_pass,
+            &surface_pass,
             &mut graphics_factory,
         );
 
@@ -169,7 +179,8 @@ impl Game {
             graphics_factory,
             graphics_queue,
             temporary_command_buffer,
-            backbuffer_pass,
+            surface,
+            surface_pass,
             imgui,
             imgui_platform,
             imgui_graphics,
@@ -207,17 +218,16 @@ impl Game {
         let time_delta = time_now - self.frame_time;
         self.frame_time = time_now;
 
-        let frame_context = self.graphics_device.acquire_frame();
+        let frame_context = self.graphics_device.begin_frame();
         let image_index = {
             microprofile::scope!("acquire_frame", "total", 0);
-            let image_ready_semaphore = self.backbuffer_pass.get_image_ready_semaphore(&frame_context);
-            let frame_fence = self.backbuffer_pass.get_signal_fence(&frame_context);
+            let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
+            let frame_fence = self.surface_pass.get_signal_fence(&frame_context);
 
             // acquire next image
             self.graphics_device
                 .wait_for_fences(&[frame_fence], true, u64::max_value());
-            self.graphics_device
-                .acquire_next_image(u64::max_value(), image_ready_semaphore)
+            self.surface.acquire_next_image(u64::max_value(), image_ready_semaphore)
         };
         microprofile::scope!("draw_and_present", "total", 0);
 
@@ -225,7 +235,7 @@ impl Game {
         self.camera_state.update(time_delta.as_secs_f32());
         self.render_world.render(
             self.camera_state.get_camera(),
-            &mut self.backbuffer_pass,
+            &mut self.surface_pass,
             &frame_context,
             &mut self.graphics_device,
             &mut self.graphics_factory,
@@ -234,20 +244,20 @@ impl Game {
 
         // process backbuffer pass and post processing
         let screen_area = {
-            let surface_extent = self.graphics_device.get_surface_extent();
+            let surface_extent = self.surface.get_surface_extent();
             vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
                 extent: surface_extent,
             }
         };
-        self.backbuffer_pass.begin(
+        self.surface_pass.begin(
             &frame_context,
             &mut self.graphics_device,
             &mut self.graphics_factory,
             screen_area,
         );
         self.post_process
-            .render(screen_area, &frame_context, &mut self.backbuffer_pass);
+            .render(screen_area, &frame_context, &mut self.surface_pass);
 
         // process imgui
         let io = self.imgui.io_mut();
@@ -266,17 +276,21 @@ impl Game {
             self.imgui_graphics.draw(
                 &frame_context,
                 &mut self.graphics_factory,
-                self.backbuffer_pass.get_command_buffer(&frame_context),
+                self.surface_pass.get_command_buffer(&frame_context),
                 ui.render(),
             );
         }
 
         // present
-        self.backbuffer_pass.end(&frame_context);
-        self.backbuffer_pass
+        self.surface_pass.end(&frame_context);
+        self.surface_pass
             .submit_commands(&frame_context, &mut self.graphics_queue);
-        self.graphics_device
-            .present(self.backbuffer_pass.get_signal_semaphore(&frame_context), image_index);
+        self.surface.present(
+            &mut self.graphics_queue,
+            self.surface_pass.get_signal_semaphore(&frame_context),
+            image_index,
+        );
+        self.graphics_device.end_frame(frame_context);
 
         // flip profiler
         microprofile::flip!();
