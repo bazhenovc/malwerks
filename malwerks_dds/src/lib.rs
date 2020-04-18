@@ -79,9 +79,9 @@ impl ScratchImage {
         let mut caps = DDSCAPS_TEXTURE;
         let mut caps2 = 0;
 
-        // if is_block_compressed(dxgi_format) {
-        //     flags |= DDSD_LINEARSIZE;
-        // }
+        if is_block_compressed(dxgi_format) {
+            flags |= DDSD_LINEARSIZE;
+        }
 
         if width > 1 {
             flags |= DDSD_WIDTH;
