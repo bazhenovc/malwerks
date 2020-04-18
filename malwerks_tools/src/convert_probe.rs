@@ -3,8 +3,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-mod dds;
-use dds::*;
+use malwerks_dds::*;
 
 fn main() {
     pretty_env_logger::init();
@@ -85,102 +84,35 @@ fn main() {
                     log::info!("texconv finished with status {:?}", texconv.status);
                 }
 
-                let mut dds_file = std::fs::File::open(dds_path).expect("failed to open resulting dds file");
-                let dds_header = {
-                    use std::io::Read;
-
-                    let mut header = [0u8; 148];
-                    dds_file.read_exact(&mut header[..]).expect("failed to read dds header");
-
-                    let header: DirectDrawHeader =
-                        bincode::deserialize(&header[..]).expect("failed to parse dds header");
-                    assert_eq!(&header.magic, b"DDS ");
-                    assert_eq!(header.size, 124);
-                    assert_eq!(header.pixel_format.size, 32);
-
-                    header
-                };
-                let dds_data = {
-                    use std::io::Read;
-                    let mut buffer = Vec::new();
-                    dds_file.read_to_end(&mut buffer).expect("failed to read dds data");
-                    buffer
-                };
-
-                temp_specular_images[name_id].push((dds_header, dds_data));
+                temp_specular_images[name_id].push(ScratchImage::from_file(&dds_path));
             }
         }
 
-        let cube_width = temp_specular_images[0][0].0.width;
-        let cube_height = temp_specular_images[0][0].0.height;
-        let cube_data_size = {
-            let mut size = 0;
-            for image in &temp_specular_images {
-                for (_header, data) in image.iter() {
-                    size += data.len();
-                }
-            }
-            size
-        };
+        let cube_width = temp_specular_images[0][0].image_size().0;
+        let cube_height = temp_specular_images[0][0].image_size().1;
 
-        let dds_header = bincode::serialize(&DirectDrawHeader {
-            magic: *b"DDS ",
-            size: 124,
-            flags: DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT,
-            height: cube_height,
-            width: cube_width,
-            pitch_or_linear_size: ((cube_width * 64 + 7) / 8) as _,
-            depth: 1,
-            mipmap_count: num_specular_mips as _,
-            reserved: [0; 11],
-            pixel_format: DirectDrawPixelFormat {
-                size: 32,
-                flags: DDPF_FOURCC,
-                four_cc: *b"DX10",
-                rgb_bit_count: 0,
-                red_bit_mask: 0,
-                green_bit_mask: 0,
-                blue_bit_mask: 0,
-                alpha_bit_mask: 0,
-            },
-            caps: 0,
-            caps2: 0,
-            caps3: 0,
-            caps4: 0,
-            reserved2: 0,
-            dxt10: DirectDrawHeader10 {
-                dxgi_format: DXGI_FORMAT_R32G32B32_FLOAT,
-                resource_dimension: D3D10_RESOURCE_DIMENSION_TEXTURE2D,
-                misc_flag: DDS_RESOURCE_MISC_TEXTURECUBE,
-                array_size: 1,
-                misc_flags2: 0,
-            },
-        })
-        .expect("failed to serialize dds header");
+        let mut scratch_image = ScratchImage::new(
+            cube_width,
+            cube_height,
+            1,
+            num_specular_mips,
+            1,
+            DXGI_FORMAT_R32G32B32_FLOAT,
+            true,
+        );
 
-        let mut dds_data = vec![0; cube_data_size];
-        let mut data_offset = 0;
+        let image_data = scratch_image.as_slice_mut();
+        let mut image_data_offset = 0;
         for image in &temp_specular_images {
             for mip in image.iter() {
-                let src_slice = &mip.1;
-                let dst_slice = &mut dds_data[data_offset..data_offset + src_slice.len()];
+                let src_slice = mip.as_slice();
+                let dst_slice = &mut image_data[image_data_offset..image_data_offset + src_slice.len()];
 
                 dst_slice.copy_from_slice(src_slice);
-                data_offset += src_slice.len();
+                image_data_offset += src_slice.len();
             }
         }
 
-        {
-            use std::io::Write;
-            let mut file = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open("output_pmrem.dds")
-                .expect("failed to open output file");
-
-            file.write_all(&dds_header[..]).expect("failed to write dds header");
-            file.write_all(&dds_data[..]).expect("failed to write pixels");
-        }
+        scratch_image.save_to_file(&std::path::Path::new("output_pmrem.dds"));
     }
 }

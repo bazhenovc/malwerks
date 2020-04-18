@@ -6,9 +6,7 @@
 use ash::vk;
 use malwerks_resources::*;
 
-mod dds;
 mod texconv;
-
 use texconv::*;
 
 fn import_gltf(file_name: &str) -> DiskStaticScenery {

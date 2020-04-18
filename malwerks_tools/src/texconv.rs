@@ -4,9 +4,8 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use ash::vk;
+use malwerks_dds::*;
 use malwerks_resources::*;
-
-use crate::dds::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ImageUsage {
@@ -41,37 +40,37 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
     };
 
     let mut texconv_args = vec!["-nologo", "-dx10", "-y", "-o", base_path.to_str().unwrap()];
-    let (image_format, block_size, is_cube_map, compressed) = match image_usage {
+    let (image_format, expected_block_size, is_cube_map) = match image_usage {
         ImageUsage::SrgbColor => {
             texconv_args.push("-srgb");
             texconv_args.push("-f");
             texconv_args.push("BC7_UNORM_SRGB");
-            (vk::Format::BC7_SRGB_BLOCK, 16, false, true)
+            (vk::Format::BC7_SRGB_BLOCK, 16, false)
         }
 
         ImageUsage::MetallicRoughnessMap => {
             texconv_args.push("-f");
             texconv_args.push("BC7_UNORM"); // TODO: compress with BC5
-            (vk::Format::BC7_UNORM_BLOCK, 16, false, true)
+            (vk::Format::BC7_UNORM_BLOCK, 16, false)
         }
 
         ImageUsage::NormalMap => {
             texconv_args.push("-f");
             texconv_args.push("BC7_UNORM"); // TODO: compress with BC5
-            (vk::Format::BC7_UNORM_BLOCK, 16, false, true)
+            (vk::Format::BC7_UNORM_BLOCK, 16, false)
         }
 
         ImageUsage::AmbientOcclusionMap => {
             texconv_args.push("-f");
             texconv_args.push("BC4_UNORM");
-            (vk::Format::BC4_UNORM_BLOCK, 8, false, true)
+            (vk::Format::BC4_UNORM_BLOCK, 8, false)
         }
 
         ImageUsage::EnvironmentSkybox => {
             texconv_args.push("-srgbo");
             texconv_args.push("-f");
             texconv_args.push("BC7_UNORM_SRGB");
-            (vk::Format::BC7_SRGB_BLOCK, 16, true, true)
+            (vk::Format::BC7_SRGB_BLOCK, 16, true)
         }
 
         ImageUsage::EnvironmentIem => {
@@ -79,7 +78,7 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
             texconv_args.push("BC6H_UF16");
             texconv_args.push("-m");
             texconv_args.push("1");
-            (vk::Format::BC6H_UFLOAT_BLOCK, 16, true, true)
+            (vk::Format::BC6H_UFLOAT_BLOCK, 16, true)
         }
 
         ImageUsage::EnvironmentPmrem => {
@@ -87,7 +86,7 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
             texconv_args.push("BC6H_UF16");
             texconv_args.push("-m");
             texconv_args.push("0");
-            (vk::Format::BC6H_UFLOAT_BLOCK, 16, true, true)
+            (vk::Format::BC6H_UFLOAT_BLOCK, 16, true)
         }
 
         ImageUsage::EnvironmentBrdf => {
@@ -95,7 +94,7 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
             texconv_args.push("R16G16_FLOAT"); // TODO: is it worth compressing?
             texconv_args.push("-m");
             texconv_args.push("1");
-            (vk::Format::R16G16_SFLOAT, 16, false, false)
+            (vk::Format::R16G16_SFLOAT, 16, false)
         }
     };
     texconv_args.push(image_path.to_str().expect("failed to convert image path"));
@@ -112,66 +111,38 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
         }
     }
 
-    let mut dds_file = std::fs::File::open(dds_path).expect("failed to open resulting dds file");
-    let dds_header = {
-        use std::io::Read;
+    let scratch_image = ScratchImage::from_file(&dds_path);
+    let image_size = scratch_image.image_size();
 
-        let mut header = [0u8; 148];
-        dds_file.read_exact(&mut header[..]).expect("failed to read dds header");
-
-        let header: DirectDrawHeader = bincode::deserialize(&header[..]).expect("failed to parse dds header");
-        assert_eq!(&header.magic, b"DDS ");
-        assert_eq!(header.size, 124);
-        assert_eq!(header.pixel_format.size, 32);
-
-        header
-    };
-    let dds_data = {
-        use std::io::Read;
-        let mut buffer = Vec::new();
-        dds_file.read_to_end(&mut buffer).expect("failed to read dds data");
-        buffer
-    };
+    let block_size = scratch_image.block_size();
+    assert_eq!(block_size, expected_block_size);
 
     let (image_type, view_type) = if is_cube_map {
         (vk::ImageType::TYPE_2D, vk::ImageViewType::CUBE)
-    } else if dds_header.depth > 1 {
+    } else if image_size.2 > 1 {
         (vk::ImageType::TYPE_3D, vk::ImageViewType::TYPE_3D)
-    } else if dds_header.height > 1 {
+    } else if image_size.1 > 1 {
         (vk::ImageType::TYPE_2D, vk::ImageViewType::TYPE_2D)
     } else {
         (vk::ImageType::TYPE_1D, vk::ImageViewType::TYPE_1D)
     };
+
     let image_layer_count = if is_cube_map {
-        dds_header.dxt10.array_size * 6
+        scratch_image.layer_count() * 6
     } else {
-        dds_header.dxt10.array_size
+        scratch_image.layer_count()
     };
 
-    if compressed {
-        let row_pitch = block_size * ((dds_header.width + 3) / 4).max(1);
-        let linear_pitch = row_pitch * ((dds_header.height + 3) / 4).max(1);
-        assert_eq!(linear_pitch, dds_header.pitch_or_linear_size);
-
-        let mut image_data_size = 0;
-        for mip in 0..dds_header.mipmap_count {
-            let mip_pitch = block_size * (((dds_header.width >> mip) + 3) / 4).max(1);
-            let mip_size = mip_pitch * (((dds_header.height >> mip) + 3) / 4).max(1);
-            image_data_size += mip_size;
-        }
-        assert_eq!(image_data_size * image_layer_count, dds_data.len() as u32);
-    }
-
     DiskImage {
-        width: dds_header.width,
-        height: dds_header.height,
-        depth: dds_header.depth,
+        width: image_size.0,
+        height: image_size.1,
+        depth: image_size.2,
         block_size: block_size as _,
-        mipmap_count: dds_header.mipmap_count as _,
+        mipmap_count: scratch_image.mipmap_count() as _,
         layer_count: image_layer_count as _,
         image_type: image_type.as_raw(),
         view_type: view_type.as_raw(),
         format: image_format.as_raw(),
-        pixels: dds_data,
+        pixels: scratch_image.as_slice().to_vec(),
     }
 }

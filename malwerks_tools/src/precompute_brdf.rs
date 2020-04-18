@@ -3,10 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_dds::*;
 use ultraviolet::vec::*;
-
-mod dds;
-use dds::*;
 
 // http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 #[allow(clippy::excessive_precision)]
@@ -188,59 +186,15 @@ fn main() {
         }
     }
 
-    let dds_header = DirectDrawHeader {
-        magic: *b"DDS ",
-        size: 124,
-        flags: DDSD_CAPS | DDSD_WIDTH | DDSD_HEIGHT | DDSD_PIXELFORMAT,
-        height: IMAGE_HEIGHT as _,
-        width: IMAGE_WIDTH as _,
-        pitch_or_linear_size: ((IMAGE_WIDTH * 64 + 7) / 8) as _,
-        depth: 1,
-        mipmap_count: 1,
-        reserved: [0; 11],
-        pixel_format: DirectDrawPixelFormat {
-            size: 32,
-            flags: DDPF_FOURCC,
-            four_cc: *b"DX10",
-            rgb_bit_count: 0,
-            red_bit_mask: 0,
-            green_bit_mask: 0,
-            blue_bit_mask: 0,
-            alpha_bit_mask: 0,
-        },
-        caps: 0,
-        caps2: 0,
-        caps3: 0,
-        caps4: 0,
-        reserved2: 0,
-        dxt10: DirectDrawHeader10 {
-            dxgi_format: DXGI_FORMAT_R32G32_FLOAT,
-            resource_dimension: D3D10_RESOURCE_DIMENSION_TEXTURE2D,
-            misc_flag: 0,
-            array_size: 1,
-            misc_flags2: 0,
-        },
-    };
-
-    let header = bincode::serialize(&dds_header).expect("failed to serialize dds header");
-    let data = unsafe {
-        std::slice::from_raw_parts(
-            final_pixels.as_ptr() as *const u8,
-            final_pixels.len() * std::mem::size_of::<f32>() * 2,
-        )
-    };
-    assert_eq!(data.len(), IMAGE_WIDTH * IMAGE_WIDTH * std::mem::size_of::<f32>() * 2);
-
-    {
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open("brdf.dds")
-            .expect("failed to open output file");
-
-        file.write_all(&header[..]).expect("failed to write dds header");
-        file.write_all(&data[..]).expect("failed to write pixels");
-    }
+    let mut scratch_image = ScratchImage::new(
+        IMAGE_WIDTH as _,
+        IMAGE_HEIGHT as _,
+        1,
+        1,
+        1,
+        DXGI_FORMAT_R32G32_FLOAT,
+        false,
+    );
+    scratch_image.as_typed_slice_mut().copy_from_slice(&final_pixels);
+    scratch_image.save_to_file(&std::path::Path::new("brdf.dds"));
 }

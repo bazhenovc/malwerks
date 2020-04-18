@@ -727,6 +727,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "malwerks_dds"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "serde",
+]
+
+[[package]]
 name = "malwerks_playground"
 version = "0.1.0"
 dependencies = [
@@ -776,6 +784,7 @@ dependencies = [
  "gltf",
  "indicatif",
  "log",
+ "malwerks_dds",
  "malwerks_resources",
  "pretty_env_logger",
  "rayon",

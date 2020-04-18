@@ -1,6 +1,8 @@
 [workspace]
 members = [
+    "malwerks_dds",
     "malwerks_vk",
+    "malwerks_resources",
     "malwerks_render",
     "malwerks_tools",
     "malwerks_playground",
