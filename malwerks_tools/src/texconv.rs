@@ -107,7 +107,7 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
             .output()
             .expect("failed to spawn texconv.exe process");
         if !texconv.status.success() {
-            log::info!("texconv finished with status {:?}", texconv.status);
+            panic!("texconv finished with status {:?}", texconv.status);
         }
     }
 

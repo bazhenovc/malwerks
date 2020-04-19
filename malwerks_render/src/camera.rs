@@ -63,7 +63,7 @@ impl Camera {
         self.orientation = self.orientation.normalized();
     }
 
-    pub fn update_matrice(&mut self) {
+    pub fn update_matrices(&mut self) {
         self.view_projection =
             utv::projection::perspective_reversed_infinite_z_vk(to_radians(self.field_of_view), self.aspect_ratio, 0.1)
                 * self.orientation.into_matrix().into_homogeneous()

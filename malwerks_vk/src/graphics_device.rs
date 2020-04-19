@@ -404,7 +404,7 @@ fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] 
 }
 
 unsafe extern "system" fn vulkan_debug_callback(
-    _: vk::DebugReportFlagsEXT,
+    flags: vk::DebugReportFlagsEXT,
     _: vk::DebugReportObjectTypeEXT,
     _: u64,
     _: usize,
@@ -413,7 +413,12 @@ unsafe extern "system" fn vulkan_debug_callback(
     p_message: *const c_char,
     _: *mut c_void,
 ) -> u32 {
-    log::warn!("{:?}", CStr::from_ptr(p_message));
+    if flags & vk::DebugReportFlagsEXT::INFORMATION == vk::DebugReportFlagsEXT::INFORMATION {
+        log::info!("{:?}", CStr::from_ptr(p_message));
+    } else {
+        log::error!("{:?}", CStr::from_ptr(p_message));
+        panic!("{:?}", CStr::from_ptr(p_message));
+    }
     vk::FALSE
 }
 

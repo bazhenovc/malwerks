@@ -16,6 +16,7 @@ mod render_world;
 mod shared_frame_data;
 mod sky_box;
 mod static_scenery;
+mod upload_batch;
 
 pub use camera::*;
 pub use forward_pass::*;
@@ -25,15 +26,12 @@ pub use render_world::*;
 pub use shared_frame_data::*;
 pub use sky_box::*;
 pub use static_scenery::*;
+pub use upload_batch::*;
 
 pub use malwerks_vk::*;
 
 pub use microprofile;
 pub use ultraviolet as utv;
-
-// TODO: make crate-local
-mod internal;
-pub use internal::upload_image_memory;
 
 #[macro_export]
 macro_rules! include_spirv {
@@ -44,3 +42,6 @@ macro_rules! include_spirv {
         }
     };
 }
+
+#[cfg(test)]
+mod test_render_passes;

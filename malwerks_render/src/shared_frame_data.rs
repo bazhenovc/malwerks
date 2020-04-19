@@ -6,7 +6,7 @@
 use malwerks_vk::*;
 
 use crate::camera::*;
-use crate::internal::copy_to_mapped_memory;
+use crate::upload_batch::copy_to_mapped_memory;
 
 pub struct SharedFrameData {
     descriptor_pool: vk::DescriptorPool,

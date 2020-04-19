@@ -8,6 +8,7 @@ use dds::*;
 
 pub use dds::dxgi_format::*;
 
+#[derive(Clone)]
 pub struct ScratchImage {
     dds_header: DirectDrawHeader,
     dds_data: Vec<u8>,
@@ -210,7 +211,7 @@ impl ScratchImage {
     }
 
     pub fn as_typed_slice<T>(&self) -> &[T] {
-        let source_size = bits_per_pixel(self.dds_header.dxt10.dxgi_format);
+        let source_size = bits_per_pixel(self.dds_header.dxt10.dxgi_format) / 8;
         let target_size = std::mem::size_of::<T>();
         assert_eq!(source_size, target_size as _);
 
@@ -218,7 +219,7 @@ impl ScratchImage {
     }
 
     pub fn as_typed_slice_mut<T>(&mut self) -> &mut [T] {
-        let source_size = bits_per_pixel(self.dds_header.dxt10.dxgi_format);
+        let source_size = bits_per_pixel(self.dds_header.dxt10.dxgi_format) / 8;
         let target_size = std::mem::size_of::<T>();
         assert_eq!(source_size, target_size as _);
 

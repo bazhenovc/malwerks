@@ -62,7 +62,7 @@ impl CameraState {
             self.rotation_y * rotation_delta,
         ));
 
-        self.camera.update_matrice();
+        self.camera.update_matrices();
     }
 
     pub fn get_camera(&self) -> &Camera {

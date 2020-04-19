@@ -6,9 +6,9 @@
 use malwerks_resources::*;
 use malwerks_vk::*;
 
-use crate::internal::*;
 use crate::render_pass::*;
 use crate::shared_frame_data::*;
+use crate::upload_batch::*;
 
 #[derive(Default)]
 pub struct StaticScenery {

@@ -9,6 +9,7 @@ use crate::render_pass::*;
 
 pub struct ForwardPass {
     base_pass: BaseRenderPass,
+    extent: vk::Extent3D,
 
     depth_image: HeapAllocatedResource<vk::Image>,
     depth_image_view: vk::ImageView,
@@ -19,6 +20,11 @@ pub struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(width: u32, height: u32, device: &GraphicsDevice, factory: &mut GraphicsFactory) -> Self {
+        let extra_usage_flags = if cfg!(test) {
+            vk::ImageUsageFlags::TRANSFER_SRC
+        } else {
+            vk::ImageUsageFlags::default()
+        };
         let extent = vk::Extent3D {
             width,
             height,
@@ -33,7 +39,7 @@ impl ForwardPass {
                 .array_layers(1)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .tiling(vk::ImageTiling::OPTIMAL)
-                .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
+                .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED | extra_usage_flags)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
                 .build(),
             &vk_mem::AllocationCreateInfo {
@@ -69,7 +75,7 @@ impl ForwardPass {
                 .array_layers(1)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .tiling(vk::ImageTiling::OPTIMAL)
-                .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED)
+                .usage(vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED | extra_usage_flags)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
                 .build(),
             &vk_mem::AllocationCreateInfo {
@@ -140,30 +146,30 @@ impl ForwardPass {
                             .build(),
                     )
                     .build()])
-                .dependencies(&[
-                    vk::SubpassDependency::builder()
-                        .src_subpass(vk::SUBPASS_EXTERNAL)
-                        .dst_subpass(0)
-                        .src_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
-                        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                        .src_access_mask(vk::AccessFlags::MEMORY_READ)
-                        .dst_access_mask(
-                            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        )
-                        .dependency_flags(vk::DependencyFlags::BY_REGION)
-                        .build(),
-                    vk::SubpassDependency::builder()
-                        .src_subpass(0)
-                        .dst_subpass(vk::SUBPASS_EXTERNAL)
-                        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                        .dst_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
-                        .src_access_mask(
-                            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        )
-                        .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                        .dependency_flags(vk::DependencyFlags::BY_REGION)
-                        .build(),
-                ])
+                // .dependencies(&[
+                //     vk::SubpassDependency::builder()
+                //         .src_subpass(vk::SUBPASS_EXTERNAL)
+                //         .dst_subpass(0)
+                //         .src_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
+                //         .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                //         .src_access_mask(vk::AccessFlags::MEMORY_READ)
+                //         .dst_access_mask(
+                //             vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                //         )
+                //         .dependency_flags(vk::DependencyFlags::BY_REGION)
+                //         .build(),
+                //     vk::SubpassDependency::builder()
+                //         .src_subpass(0)
+                //         .dst_subpass(vk::SUBPASS_EXTERNAL)
+                //         .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                //         .dst_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
+                //         .src_access_mask(
+                //             vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                //         )
+                //         .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                //         .dependency_flags(vk::DependencyFlags::BY_REGION)
+                //         .build(),
+                // ])
                 .build(),
         );
 
@@ -189,6 +195,7 @@ impl ForwardPass {
                 framebuffer,
                 vec![vk::ClearValue::default(), vk::ClearValue::default()],
             ),
+            extent,
 
             depth_image,
             depth_image_view,
@@ -197,9 +204,21 @@ impl ForwardPass {
         }
     }
 
-    //fn get_depth_image_view(&self) -> vk::ImageView {
-    //    self.depth_image_view
-    //}
+    pub fn get_depth_resource(&self) -> &HeapAllocatedResource<vk::Image> {
+        &self.depth_image
+    }
+
+    pub fn get_depth_image(&self) -> vk::Image {
+        self.depth_image.0
+    }
+
+    pub fn get_depth_image_view(&self) -> vk::ImageView {
+        self.depth_image_view
+    }
+
+    pub fn get_color_resource(&self) -> &HeapAllocatedResource<vk::Image> {
+        &self.color_image
+    }
 
     pub fn get_color_image(&self) -> vk::Image {
         self.color_image.0
@@ -207,6 +226,10 @@ impl ForwardPass {
 
     pub fn get_color_image_view(&self) -> vk::ImageView {
         self.color_image_view
+    }
+
+    pub fn get_extent(&self) -> vk::Extent3D {
+        self.extent
     }
 }
 

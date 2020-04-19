@@ -16,9 +16,7 @@ pub(crate) fn copy_to_mapped_memory<T>(data: &[T], memory: *mut u8) {
     }
 }
 
-pub(crate) struct UploadBatch<'a> {
-    //factory: &'a mut GraphicsFactory,
-    //queue: &'a mut DeviceQueue,
+pub struct UploadBatch<'a> {
     command_buffer: &'a mut CommandBuffer,
     temporary_buffers: Vec<HeapAllocatedResource<vk::Buffer>>,
 }
@@ -93,8 +91,7 @@ impl<'a> UploadBatch<'a> {
     }
 }
 
-// TODO: make crate-local
-pub fn upload_image_memory(
+fn upload_image_memory(
     image: &HeapAllocatedResource<vk::Image>,
     image_size: (u32, u32, u32),
     image_params: (usize, usize, usize),

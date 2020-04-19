@@ -25,9 +25,9 @@ impl RenderWorld {
     pub fn from_file(
         world_path: &std::path::Path,
         render_size: (u32, u32),
+        command_buffer: &mut CommandBuffer,
         device: &GraphicsDevice,
         factory: &mut GraphicsFactory,
-        command_buffer: &mut CommandBuffer,
         queue: &mut DeviceQueue,
     ) -> Self {
         let forward_pass = ForwardPass::new(render_size.0, render_size.1, device, factory);
@@ -46,15 +46,15 @@ impl RenderWorld {
         };
         let static_scenery = bincode::deserialize(&encoded).expect("failed to deserialize world file");
 
-        Self::from_disk(static_scenery, factory, command_buffer, queue, forward_pass)
+        Self::from_disk(static_scenery, forward_pass, command_buffer, factory, queue)
     }
 
     pub fn from_disk(
         disk_scenery: DiskStaticScenery,
-        factory: &mut GraphicsFactory,
-        command_buffer: &mut CommandBuffer,
-        queue: &mut DeviceQueue,
         forward_pass: ForwardPass,
+        command_buffer: &mut CommandBuffer,
+        factory: &mut GraphicsFactory,
+        queue: &mut DeviceQueue,
     ) -> Self {
         let shared_frame_data = SharedFrameData::new(factory);
         let static_scenery = StaticScenery::from_disk(
@@ -90,17 +90,14 @@ impl RenderWorld {
         &self.forward_pass
     }
 
-    pub fn render<T>(
+    pub fn render(
         &mut self,
         camera: &Camera,
-        render_pass: &mut T,
         frame_context: &FrameContext,
         device: &mut GraphicsDevice,
         factory: &mut GraphicsFactory,
         queue: &mut DeviceQueue,
-    ) where
-        T: RenderPass,
-    {
+    ) {
         let viewport = camera.get_viewport();
         let screen_area = vk::Rect2D {
             offset: vk::Offset2D {
@@ -113,10 +110,9 @@ impl RenderWorld {
             },
         };
         self.shared_frame_data.update(frame_context, camera, factory);
-
-        render_pass.add_dependency(frame_context, &self.forward_pass, vk::PipelineStageFlags::ALL_GRAPHICS);
         self.forward_pass.begin(frame_context, device, factory, screen_area);
 
+        // let depth_image = self.forward_pass.get_depth_image();
         let color_image = self.forward_pass.get_color_image();
         let command_buffer = self.forward_pass.get_command_buffer(frame_context);
         command_buffer.set_viewport(
@@ -145,24 +141,44 @@ impl RenderWorld {
             None,
             &[],
             &[],
-            &[vk::ImageMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .src_queue_family_index(!0)
-                .dst_queue_family_index(!0)
-                .image(color_image)
-                .subresource_range(
-                    vk::ImageSubresourceRange::builder()
-                        .aspect_mask(vk::ImageAspectFlags::COLOR)
-                        .base_mip_level(0)
-                        .level_count(1)
-                        .base_array_layer(0)
-                        .layer_count(1)
-                        .build(),
-                )
-                .build()],
+            &[
+                // vk::ImageMemoryBarrier::builder()
+                //     .src_access_mask(vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE)
+                //     .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                //     .old_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                //     .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                //     .src_queue_family_index(!0)
+                //     .dst_queue_family_index(!0)
+                //     .image(depth_image)
+                //     .subresource_range(
+                //         vk::ImageSubresourceRange::builder()
+                //             .aspect_mask(vk::ImageAspectFlags::DEPTH)
+                //             .base_mip_level(0)
+                //             .level_count(1)
+                //             .base_array_layer(0)
+                //             .layer_count(1)
+                //             .build(),
+                //     )
+                //     .build(),
+                vk::ImageMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                    .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                    .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .src_queue_family_index(!0)
+                    .dst_queue_family_index(!0)
+                    .image(color_image)
+                    .subresource_range(
+                        vk::ImageSubresourceRange::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .base_mip_level(0)
+                            .level_count(1)
+                            .base_array_layer(0)
+                            .layer_count(1)
+                            .build(),
+                    )
+                    .build(),
+            ],
         );
         self.forward_pass.submit_commands(frame_context, queue);
     }

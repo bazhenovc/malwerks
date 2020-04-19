@@ -72,7 +72,7 @@ impl Drop for Game {
 
 impl Game {
     fn new(window: &winit::window::Window, world_path: &std::path::Path) -> Self {
-        let graphics_device = GraphicsDevice::new(
+        let mut graphics_device = GraphicsDevice::new(
             GraphicsSurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
                 surface_winit::create_surface(entry, instance, window).expect("failed to create KHR surface")
             }),
@@ -84,18 +84,18 @@ impl Game {
         let mut graphics_queue = graphics_device.get_graphics_queue();
         let mut graphics_factory = graphics_device.create_graphics_factory();
 
-        let transient_command_pool = graphics_factory.create_command_pool(
+        let temporary_command_pool = graphics_factory.create_command_pool(
             &vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                 .queue_family_index(graphics_device.get_graphics_queue_index())
                 .build(),
         );
         let mut temporary_command_buffer = TemporaryCommandBuffer {
-            command_pool: transient_command_pool,
+            command_pool: temporary_command_pool,
             command_buffer: graphics_factory.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::builder()
                     .command_buffer_count(1)
-                    .command_pool(transient_command_pool)
+                    .command_pool(temporary_command_pool)
                     .level(vk::CommandBufferLevel::PRIMARY)
                     .build(),
             )[0],
@@ -109,9 +109,9 @@ impl Game {
         let imgui_graphics = imgui_graphics::ImguiGraphics::new(
             &mut imgui,
             &surface_pass,
-            &graphics_device,
-            &mut graphics_factory,
             &mut temporary_command_buffer.command_buffer,
+            &mut graphics_device,
+            &mut graphics_factory,
             &mut graphics_queue,
         );
 
@@ -132,9 +132,9 @@ impl Game {
         let render_world = RenderWorld::from_file(
             world_path,
             (RENDER_WIDTH, RENDER_HEIGHT),
+            &mut temporary_command_buffer.command_buffer,
             &graphics_device,
             &mut graphics_factory,
-            &mut temporary_command_buffer.command_buffer,
             &mut graphics_queue,
         );
         let post_process = PostProcess::new(
@@ -231,11 +231,17 @@ impl Game {
         };
         microprofile::scope!("draw_and_present", "total", 0);
 
+        // setup render passes
+        self.surface_pass.add_dependency(
+            &frame_context,
+            self.render_world.get_render_pass(),
+            vk::PipelineStageFlags::ALL_GRAPHICS,
+        );
+
         // render world
         self.camera_state.update(time_delta.as_secs_f32());
         self.render_world.render(
             self.camera_state.get_camera(),
-            &mut self.surface_pass,
             &frame_context,
             &mut self.graphics_device,
             &mut self.graphics_factory,

@@ -43,9 +43,9 @@ impl ImguiGraphics {
     pub fn new(
         imgui: &mut imgui::Context,
         pass: &SurfacePass,
-        _device: &GraphicsDevice,
-        factory: &mut GraphicsFactory,
         command_buffer: &mut CommandBuffer,
+        _device: &mut GraphicsDevice,
+        factory: &mut GraphicsFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
         let vert_module = factory.create_shader_module(
@@ -414,33 +414,15 @@ impl ImguiGraphics {
             },
         );
 
-        command_buffer.reset();
-        command_buffer.begin(
-            &vk::CommandBufferBeginInfo::builder()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-                .build(),
-        );
-        let temp_buffer = upload_image_memory(
+        let mut upload_batch = UploadBatch::new(command_buffer);
+        upload_batch.upload_image_memory(
             &image,
             (texture_handle.width, texture_handle.height, 1),
             (0, 1, 1),
             texture_handle.data,
             factory,
-            command_buffer,
         );
-        command_buffer.end();
-
-        //let queue = device.get_graphics_queue();
-        queue.submit(
-            &[vk::SubmitInfo::builder()
-                .command_buffers(&[command_buffer.clone().into()])
-                .build()],
-            vk::Fence::null(),
-        );
-        queue.wait_idle();
-        //device.wait_idle();
-
-        factory.deallocate_buffer(&temp_buffer);
+        upload_batch.flush(factory, queue);
         image
     }
 }

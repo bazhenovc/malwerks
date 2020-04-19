@@ -5,7 +5,7 @@
 
 #[doc = "https://docs.microsoft.com/en-us/windows/win32/direct3ddds/dds-pixelformat"]
 #[repr(C)]
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct DirectDrawPixelFormat {
     pub size: u32,
     pub flags: u32,
@@ -19,7 +19,7 @@ pub struct DirectDrawPixelFormat {
 
 #[doc = "https://docs.microsoft.com/en-us/windows/win32/direct3ddds/dds-header-dxt10"]
 #[repr(C)]
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct DirectDrawHeader10 {
     pub dxgi_format: u32,
     pub resource_dimension: u32,
@@ -30,7 +30,7 @@ pub struct DirectDrawHeader10 {
 
 #[doc = "https://docs.microsoft.com/en-us/windows/win32/direct3ddds/dds-header"]
 #[repr(C)]
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct DirectDrawHeader {
     pub magic: [u8; 4],
     pub size: u32,

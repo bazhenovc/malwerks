@@ -5,6 +5,7 @@ authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+malwerks_dds = { path = "../malwerks_dds" }
 malwerks_vk = { path = "../malwerks_vk" }
 malwerks_resources = { path = "../malwerks_resources" }
 log = "*"
@@ -12,6 +13,10 @@ serde = { version = "*", features = ["derive"] }
 bincode = "*"
 ultraviolet = "*"
 rayon = "*"
+
+[dev-dependencies]
+ash = "*"
+pretty_env_logger = "*"
 
 [dependencies.microprofile]
 version = "0.2.1"
