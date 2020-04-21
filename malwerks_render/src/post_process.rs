@@ -29,7 +29,7 @@ impl PostProcess {
         frag_code: &[u32],
         source_pass: &ForwardPass, // TODO: make it a generic render pass
         destination_pass: &T,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
     ) -> Self
     where
         T: RenderPass,
@@ -214,7 +214,7 @@ impl PostProcess {
         }
     }
 
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_sampler(self.point_sampler);
         factory.destroy_sampler(self.linear_sampler);
         factory.destroy_descriptor_pool(self.descriptor_pool);

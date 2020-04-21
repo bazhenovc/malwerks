@@ -19,7 +19,7 @@ pub struct SharedFrameData {
 }
 
 impl SharedFrameData {
-    pub fn new(factory: &mut GraphicsFactory) -> Self {
+    pub fn new(factory: &mut DeviceFactory) -> Self {
         let frame_data_buffer = FrameLocal::new(|_| {
             factory.allocate_buffer(
                 &vk::BufferCreateInfo::builder()
@@ -94,14 +94,14 @@ impl SharedFrameData {
         }
     }
 
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.frame_data_descriptor_set_layout);
         self.frame_data_buffer
             .destroy(|buffer| factory.deallocate_buffer(buffer));
     }
 
-    pub fn update(&mut self, frame_context: &FrameContext, camera: &Camera, factory: &mut GraphicsFactory) {
+    pub fn update(&mut self, frame_context: &FrameContext, camera: &Camera, factory: &mut DeviceFactory) {
         let view_position = -camera.position;
         let view_projection = camera.get_view_projection();
         self.view_projection.copy_from_slice(view_projection.as_slice());

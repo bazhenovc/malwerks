@@ -26,8 +26,8 @@ impl RenderWorld {
         world_path: &std::path::Path,
         render_size: (u32, u32),
         command_buffer: &mut CommandBuffer,
-        device: &GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        device: &Device,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
         let forward_pass = ForwardPass::new(render_size.0, render_size.1, device, factory);
@@ -53,7 +53,7 @@ impl RenderWorld {
         disk_scenery: DiskStaticScenery,
         forward_pass: ForwardPass,
         command_buffer: &mut CommandBuffer,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
         let shared_frame_data = SharedFrameData::new(factory);
@@ -80,7 +80,7 @@ impl RenderWorld {
         }
     }
 
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         self.shared_frame_data.destroy(factory);
         self.static_scenery.destroy(factory);
         self.forward_pass.destroy(factory);
@@ -94,8 +94,8 @@ impl RenderWorld {
         &mut self,
         camera: &Camera,
         frame_context: &FrameContext,
-        device: &mut GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        device: &mut Device,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) {
         let viewport = camera.get_viewport();

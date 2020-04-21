@@ -33,7 +33,7 @@ impl SkyBox {
         static_scenery: &StaticScenery,
         shared_frame_data: &SharedFrameData,
         forward_pass: &ForwardPass,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
     ) -> Self {
         let disk_probe = &disk_scenery.environment_probes[0];
 
@@ -212,7 +212,7 @@ impl SkyBox {
         }
     }
 
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_sampler(self.linear_sampler);
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_set_layout);

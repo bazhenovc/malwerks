@@ -9,14 +9,14 @@ use ash::vk;
 use crate::command_buffer::*;
 use crate::internal::*;
 
-pub struct GraphicsFactory {
+pub struct DeviceFactory {
     device: ash::Device,
     allocator: vk_mem::Allocator,
 }
 
-impl GraphicsFactory {
+impl DeviceFactory {
     pub(crate) fn new(device: ash::Device, instance: ash::Instance, physical_device: vk::PhysicalDevice) -> Self {
-        Self {
+        DeviceFactory {
             device: device.clone(),
             allocator: vk_mem::Allocator::new(&vk_mem::AllocatorCreateInfo {
                 physical_device,
@@ -38,7 +38,7 @@ pub struct HeapAllocatedResource<T>(pub T, pub vk_mem::AllocationInfo, vk_mem::A
 #[derive(Clone)]
 pub struct HeapAllocatedMemory(pub vk_mem::AllocationInfo, vk_mem::Allocation);
 
-impl GraphicsFactory {
+impl DeviceFactory {
     pub fn allocate_heap_memory(
         &mut self,
         memory_requirements: &vk::MemoryRequirements,
@@ -105,7 +105,7 @@ impl GraphicsFactory {
     }
 }
 
-impl GraphicsFactory {
+impl DeviceFactory {
     // samplers
 
     #[doc = "https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateSampler.html"]
@@ -581,7 +581,7 @@ impl GraphicsFactory {
 
 // ray tracing nv
 
-impl GraphicsFactory {
+impl DeviceFactory {
     #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCreateRayTracingPipelinesNV.html>"]
     pub fn create_ray_tracing_pipelines_nv(
         &mut self,

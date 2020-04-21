@@ -26,15 +26,15 @@ struct TemporaryCommandBuffer {
 }
 
 impl TemporaryCommandBuffer {
-    fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_command_pool(self.command_pool);
     }
 }
 
 struct Game {
-    graphics_device: GraphicsDevice,
-    graphics_factory: GraphicsFactory,
-    graphics_queue: DeviceQueue,
+    device: Device,
+    factory: DeviceFactory,
+    queue: DeviceQueue,
 
     surface: surface_winit::SurfaceWinit,
     surface_pass: surface_pass::SurfacePass,
@@ -56,43 +56,43 @@ struct Game {
 
 impl Drop for Game {
     fn drop(&mut self) {
-        self.graphics_queue.wait_idle();
-        self.graphics_device.wait_idle();
+        self.queue.wait_idle();
+        self.device.wait_idle();
 
-        self.temporary_command_buffer.destroy(&mut self.graphics_factory);
-        self.imgui_graphics.destroy(&mut self.graphics_factory);
-        self.render_world.destroy(&mut self.graphics_factory);
-        self.post_process.destroy(&mut self.graphics_factory);
+        self.temporary_command_buffer.destroy(&mut self.factory);
+        self.imgui_graphics.destroy(&mut self.factory);
+        self.render_world.destroy(&mut self.factory);
+        self.post_process.destroy(&mut self.factory);
 
-        self.surface_pass.destroy(&mut self.graphics_factory);
-        self.surface.destroy(&mut self.graphics_factory);
-        self.graphics_device.wait_idle();
+        self.surface_pass.destroy(&mut self.factory);
+        self.surface.destroy(&mut self.factory);
+        self.device.wait_idle();
     }
 }
 
 impl Game {
     fn new(window: &winit::window::Window, world_path: &std::path::Path) -> Self {
-        let mut graphics_device = GraphicsDevice::new(
-            GraphicsSurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
+        let mut device = Device::new(
+            SurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
                 surface_winit::create_surface(entry, instance, window).expect("failed to create KHR surface")
             }),
-            GraphicsDeviceOptions {
+            DeviceOptions {
                 enable_validation: true,
                 ..Default::default()
             },
         );
-        let mut graphics_queue = graphics_device.get_graphics_queue();
-        let mut graphics_factory = graphics_device.create_graphics_factory();
+        let mut queue = device.get_graphics_queue();
+        let mut factory = device.create_factory();
 
-        let temporary_command_pool = graphics_factory.create_command_pool(
+        let temporary_command_pool = factory.create_command_pool(
             &vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(graphics_device.get_graphics_queue_index())
+                .queue_family_index(device.get_graphics_queue_index())
                 .build(),
         );
         let mut temporary_command_buffer = TemporaryCommandBuffer {
             command_pool: temporary_command_pool,
-            command_buffer: graphics_factory.allocate_command_buffers(
+            command_buffer: factory.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::builder()
                     .command_buffer_count(1)
                     .command_pool(temporary_command_pool)
@@ -101,8 +101,8 @@ impl Game {
             )[0],
         };
 
-        let surface = surface_winit::SurfaceWinit::new(&graphics_device);
-        let surface_pass = surface_pass::SurfacePass::new(&surface, &graphics_device, &mut graphics_factory);
+        let surface = surface_winit::SurfaceWinit::new(&device);
+        let surface_pass = surface_pass::SurfacePass::new(&surface, &device, &mut factory);
 
         let mut imgui = imgui::Context::create();
         let mut imgui_platform = imgui_winit::WinitPlatform::init(&mut imgui);
@@ -110,9 +110,9 @@ impl Game {
             &mut imgui,
             &surface_pass,
             &mut temporary_command_buffer.command_buffer,
-            &mut graphics_device,
-            &mut graphics_factory,
-            &mut graphics_queue,
+            &mut device,
+            &mut factory,
+            &mut queue,
         );
 
         {
@@ -133,16 +133,16 @@ impl Game {
             world_path,
             (RENDER_WIDTH, RENDER_HEIGHT),
             &mut temporary_command_buffer.command_buffer,
-            &graphics_device,
-            &mut graphics_factory,
-            &mut graphics_queue,
+            &device,
+            &mut factory,
+            &mut queue,
         );
         let post_process = PostProcess::new(
             &include_spirv!("/shaders/post_process.vert.spv"),
             &include_spirv!("/shaders/post_process.frag.spv"),
             render_world.get_render_pass(),
             &surface_pass,
-            &mut graphics_factory,
+            &mut factory,
         );
 
         let input_map = {
@@ -175,9 +175,9 @@ impl Game {
         };
 
         Self {
-            graphics_device,
-            graphics_factory,
-            graphics_queue,
+            device,
+            factory,
+            queue,
             temporary_command_buffer,
             surface,
             surface_pass,
@@ -218,15 +218,14 @@ impl Game {
         let time_delta = time_now - self.frame_time;
         self.frame_time = time_now;
 
-        let frame_context = self.graphics_device.begin_frame();
+        let frame_context = self.device.begin_frame();
         let image_index = {
             microprofile::scope!("acquire_frame", "total", 0);
             let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
             let frame_fence = self.surface_pass.get_signal_fence(&frame_context);
 
             // acquire next image
-            self.graphics_device
-                .wait_for_fences(&[frame_fence], true, u64::max_value());
+            self.device.wait_for_fences(&[frame_fence], true, u64::max_value());
             self.surface.acquire_next_image(u64::max_value(), image_ready_semaphore)
         };
         microprofile::scope!("draw_and_present", "total", 0);
@@ -243,9 +242,9 @@ impl Game {
         self.render_world.render(
             self.camera_state.get_camera(),
             &frame_context,
-            &mut self.graphics_device,
-            &mut self.graphics_factory,
-            &mut self.graphics_queue,
+            &mut self.device,
+            &mut self.factory,
+            &mut self.queue,
         );
 
         // process backbuffer pass and post processing
@@ -256,12 +255,8 @@ impl Game {
                 extent: surface_extent,
             }
         };
-        self.surface_pass.begin(
-            &frame_context,
-            &mut self.graphics_device,
-            &mut self.graphics_factory,
-            screen_area,
-        );
+        self.surface_pass
+            .begin(&frame_context, &mut self.device, &mut self.factory, screen_area);
         self.post_process
             .render(screen_area, &frame_context, &mut self.surface_pass);
 
@@ -281,7 +276,7 @@ impl Game {
 
             self.imgui_graphics.draw(
                 &frame_context,
-                &mut self.graphics_factory,
+                &mut self.factory,
                 self.surface_pass.get_command_buffer(&frame_context),
                 ui.render(),
             );
@@ -289,14 +284,13 @@ impl Game {
 
         // present
         self.surface_pass.end(&frame_context);
-        self.surface_pass
-            .submit_commands(&frame_context, &mut self.graphics_queue);
+        self.surface_pass.submit_commands(&frame_context, &mut self.queue);
         self.surface.present(
-            &mut self.graphics_queue,
+            &mut self.queue,
             self.surface_pass.get_signal_semaphore(&frame_context),
             image_index,
         );
-        self.graphics_device.end_frame(frame_context);
+        self.device.end_frame(frame_context);
 
         // flip profiler
         microprofile::flip!();

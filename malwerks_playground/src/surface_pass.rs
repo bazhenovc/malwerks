@@ -15,7 +15,7 @@ pub struct SurfacePass {
 }
 
 impl SurfacePass {
-    pub fn new(surface: &SurfaceWinit, device: &GraphicsDevice, factory: &mut GraphicsFactory) -> Self {
+    pub fn new(surface: &SurfaceWinit, device: &Device, factory: &mut DeviceFactory) -> Self {
         let swapchain_images = unsafe {
             surface
                 .get_swapchain_loader()
@@ -130,8 +130,8 @@ impl RenderPass for SurfacePass {
     fn begin(
         &mut self,
         frame_context: &FrameContext,
-        device: &mut GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        device: &mut Device,
+        factory: &mut DeviceFactory,
         render_area: vk::Rect2D,
     ) {
         self.add_wait_condition(
@@ -173,7 +173,7 @@ impl RenderPass for SurfacePass {
         self.base_pass.add_wait_condition(semaphore, stage_mask);
     }
 
-    fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    fn destroy(&mut self, factory: &mut DeviceFactory) {
         self.image_ready_semaphore
             .destroy(|res| factory.destroy_semaphore(*res));
         self.base_pass.destroy(factory);

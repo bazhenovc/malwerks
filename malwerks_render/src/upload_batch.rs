@@ -50,7 +50,7 @@ impl<'a> UploadBatch<'a> {
         image_size: (u32, u32, u32),
         image_params: (usize, usize, usize),
         image_memory: &[u8],
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
     ) {
         let temp_buffer = upload_image_memory(
             image,
@@ -67,13 +67,13 @@ impl<'a> UploadBatch<'a> {
         &mut self,
         buffer: &HeapAllocatedResource<vk::Buffer>,
         buffer_memory: &[u8],
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
     ) {
         let temp_buffer = upload_buffer_memory(buffer, buffer_memory, factory, self.command_buffer);
         self.temporary_buffers.push(temp_buffer);
     }
 
-    pub fn flush(&mut self, factory: &mut GraphicsFactory, queue: &mut DeviceQueue) {
+    pub fn flush(&mut self, factory: &mut DeviceFactory, queue: &mut DeviceQueue) {
         if !self.temporary_buffers.is_empty() {
             self.command_buffer.end();
             queue.submit(
@@ -96,7 +96,7 @@ fn upload_image_memory(
     image_size: (u32, u32, u32),
     image_params: (usize, usize, usize),
     image_memory: &[u8],
-    factory: &mut GraphicsFactory,
+    factory: &mut DeviceFactory,
     command_buffer: &mut CommandBuffer,
 ) -> HeapAllocatedResource<vk::Buffer> {
     let (image_block_size, num_mip_levels, num_array_layers) = image_params;
@@ -201,7 +201,7 @@ fn upload_image_memory(
 fn upload_buffer_memory(
     buffer: &HeapAllocatedResource<vk::Buffer>,
     buffer_memory: &[u8],
-    factory: &mut GraphicsFactory,
+    factory: &mut DeviceFactory,
     command_buffer: &mut CommandBuffer,
 ) -> HeapAllocatedResource<vk::Buffer> {
     let temp_buffer = allocate_temporary_buffer(buffer_memory, factory);
@@ -250,7 +250,7 @@ fn upload_buffer_memory(
     temp_buffer
 }
 
-fn allocate_temporary_buffer(memory: &[u8], factory: &mut GraphicsFactory) -> HeapAllocatedResource<vk::Buffer> {
+fn allocate_temporary_buffer(memory: &[u8], factory: &mut DeviceFactory) -> HeapAllocatedResource<vk::Buffer> {
     let temp_buffer = factory.allocate_buffer(
         &vk::BufferCreateInfo::builder()
             .size(memory.len() as _)

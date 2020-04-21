@@ -39,7 +39,7 @@ impl StaticScenery {
         shared_frame_data: &SharedFrameData,
         render_pass: &T,
         command_buffer: &mut CommandBuffer,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self
     where
@@ -55,7 +55,7 @@ impl StaticScenery {
         static_scenery
     }
 
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         self.environment_probes.destroy(factory);
         for bucket in &self.buckets {
             for instance in &bucket.instances {
@@ -187,7 +187,7 @@ struct RenderEnvironmentProbes {
 }
 
 impl RenderEnvironmentProbes {
-    fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_sampler(self.probe_sampler);
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
@@ -206,7 +206,7 @@ impl StaticScenery {
     fn initialize_buffers(
         &mut self,
         disk_scenery: &DiskStaticScenery,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         command_buffer: &mut CommandBuffer,
         queue: &mut DeviceQueue,
     ) {
@@ -256,7 +256,7 @@ impl StaticScenery {
     fn initialize_images(
         &mut self,
         disk_scenery: &DiskStaticScenery,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         command_buffer: &mut CommandBuffer,
         queue: &mut DeviceQueue,
     ) {
@@ -354,7 +354,7 @@ impl StaticScenery {
         }
     }
 
-    fn initialize_descriptor_pool(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut GraphicsFactory) {
+    fn initialize_descriptor_pool(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut DeviceFactory) {
         // TODO: ensure these never reallocate
         let mut temp_bindings = Vec::with_capacity(5);
 
@@ -444,7 +444,7 @@ impl StaticScenery {
     fn initialize_pipelines<T>(
         &mut self,
         disk_scenery: &DiskStaticScenery,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         render_pass: &T,
         shared_frame_data: &SharedFrameData,
     ) where
@@ -663,7 +663,7 @@ impl StaticScenery {
         self.pipelines = factory.create_graphics_pipelines(self.pipeline_cache, &temp_pipelines);
     }
 
-    fn initialize_buckets(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut GraphicsFactory) {
+    fn initialize_buckets(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut DeviceFactory) {
         for disk_bucket in &disk_scenery.buckets {
             let material = disk_bucket.material;
             let mut instances = Vec::new();
@@ -708,7 +708,7 @@ impl StaticScenery {
         }
     }
 
-    fn initialize_environment_probes(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut GraphicsFactory) {
+    fn initialize_environment_probes(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut DeviceFactory) {
         let probe_sampler = factory.create_sampler(
             &vk::SamplerCreateInfo::builder()
                 .mag_filter(vk::Filter::LINEAR)

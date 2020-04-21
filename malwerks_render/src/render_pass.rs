@@ -9,13 +9,13 @@ pub trait RenderPass {
     fn begin(
         &mut self,
         frame_context: &FrameContext,
-        device: &mut GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        device: &mut Device,
+        factory: &mut DeviceFactory,
         render_area: vk::Rect2D,
     );
     fn end(&mut self, frame_context: &FrameContext);
 
-    fn submit_commands(&mut self, frame_context: &FrameContext, graphics_queue: &mut DeviceQueue);
+    fn submit_commands(&mut self, frame_context: &FrameContext, queue: &mut DeviceQueue);
 
     fn get_signal_semaphore(&self, frame_context: &FrameContext) -> vk::Semaphore;
     fn get_signal_fence(&self, frame_context: &FrameContext) -> vk::Fence;
@@ -26,7 +26,7 @@ pub trait RenderPass {
 
     fn add_wait_condition(&mut self, semaphore: vk::Semaphore, stage_mask: vk::PipelineStageFlags);
 
-    fn destroy(&mut self, factory: &mut GraphicsFactory);
+    fn destroy(&mut self, factory: &mut DeviceFactory);
 
     fn add_dependency<T>(&mut self, frame_context: &FrameContext, pass: &T, stage_mask: vk::PipelineStageFlags)
     where
@@ -43,20 +43,20 @@ macro_rules! default_render_pass_impl {
             fn begin(
                 &mut self,
                 frame_context: &FrameContext,
-                graphics_device: &mut GraphicsDevice,
-                graphics_factory: &mut GraphicsFactory,
+                device: &mut Device,
+                factory: &mut DeviceFactory,
                 render_area: vk::Rect2D,
             ) {
                 self.$proxy_member
-                    .begin(frame_context, graphics_device, graphics_factory, render_area);
+                    .begin(frame_context, device, factory, render_area);
             }
 
             fn end(&mut self, frame_context: &FrameContext) {
                 self.$proxy_member.end(frame_context);
             }
 
-            fn submit_commands(&mut self, frame_context: &FrameContext, graphics_queue: &mut DeviceQueue) {
-                self.$proxy_member.submit_commands(frame_context, graphics_queue);
+            fn submit_commands(&mut self, frame_context: &FrameContext, queue: &mut DeviceQueue) {
+                self.$proxy_member.submit_commands(frame_context, queue);
             }
 
             fn get_signal_semaphore(&self, frame_context: &FrameContext) -> vk::Semaphore {
@@ -83,9 +83,9 @@ macro_rules! default_render_pass_impl {
                 self.$proxy_member.add_wait_condition(semaphore, stage_mask);
             }
 
-            fn destroy(&mut self, graphics_factory: &mut GraphicsFactory) {
-                self.$proxy_member.destroy(graphics_factory);
-                self.destroy_internal(graphics_factory);
+            fn destroy(&mut self, factory: &mut DeviceFactory) {
+                self.$proxy_member.destroy(factory);
+                self.destroy_internal(factory);
             }
         }
     };
@@ -105,8 +105,8 @@ pub struct BaseRenderPass {
 
 impl BaseRenderPass {
     pub fn new(
-        device: &GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        device: &Device,
+        factory: &mut DeviceFactory,
         render_pass: vk::RenderPass,
         framebuffer: FrameLocal<vk::Framebuffer>,
         clear_values: Vec<vk::ClearValue>,
@@ -155,8 +155,8 @@ impl RenderPass for BaseRenderPass {
     fn begin(
         &mut self,
         frame_context: &FrameContext,
-        device: &mut GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        device: &mut Device,
+        factory: &mut DeviceFactory,
         render_area: vk::Rect2D,
     ) {
         let signal_fence = self.get_signal_fence(frame_context);
@@ -189,14 +189,14 @@ impl RenderPass for BaseRenderPass {
         command_buffer.end_render_pass();
     }
 
-    fn submit_commands(&mut self, frame_context: &FrameContext, graphics_queue: &mut DeviceQueue) {
+    fn submit_commands(&mut self, frame_context: &FrameContext, queue: &mut DeviceQueue) {
         let signal_semaphore = self.get_signal_semaphore(frame_context);
         let signal_fence = self.get_signal_fence(frame_context);
 
         let command_buffer = self.command_buffer.get_mut(frame_context);
         command_buffer.end();
 
-        graphics_queue.submit(
+        queue.submit(
             &[vk::SubmitInfo::builder()
                 .wait_semaphores(&self.wait_semaphores)
                 .wait_dst_stage_mask(&self.wait_stage_mask)
@@ -235,7 +235,7 @@ impl RenderPass for BaseRenderPass {
         self.wait_stage_mask.push(stage_mask);
     }
 
-    fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_render_pass(self.render_pass);
         self.framebuffer.destroy(|res| factory.destroy_framebuffer(*res));
         self.command_pool.destroy(|res| factory.destroy_command_pool(*res));

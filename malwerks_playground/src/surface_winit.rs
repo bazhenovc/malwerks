@@ -33,7 +33,7 @@ pub struct SurfaceWinit {
 }
 
 impl SurfaceWinit {
-    pub fn new(device: &GraphicsDevice) -> Self {
+    pub fn new(device: &Device) -> Self {
         let surface_loader = device.get_surface_loader().as_ref().unwrap();
         let surface_khr = device.get_surface_khr();
 
@@ -153,7 +153,7 @@ impl SurfaceWinit {
         }
     }
 
-    pub fn destroy(&mut self, _factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, _factory: &mut DeviceFactory) {
         unsafe {
             self.internal_swapchain
                 .loader

@@ -13,7 +13,7 @@ trait CaptureRenderTargets {
         &self,
         frame_context: &FrameContext,
         command_buffer: &mut CommandBuffer,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Vec<(&'static str, ScratchImage)>;
 }
@@ -23,7 +23,7 @@ impl CaptureRenderTargets for ForwardPass {
         &self,
         frame_context: &FrameContext,
         command_buffer: &mut CommandBuffer,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Vec<(&'static str, ScratchImage)> {
         use crate::render_pass::*;
@@ -71,7 +71,7 @@ fn capture_render_target(
     num_mip_levels: usize,
     num_array_layers: usize,
     command_buffer: &mut CommandBuffer,
-    factory: &mut GraphicsFactory,
+    factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
 ) -> ScratchImage {
     command_buffer.reset();
@@ -206,30 +206,21 @@ fn render_test_frame(
     command_buffer: &mut CommandBuffer,
     camera: &mut Camera,
     render_world: &mut RenderWorld,
-    graphics_device: &mut GraphicsDevice,
-    graphics_factory: &mut GraphicsFactory,
-    graphics_queue: &mut DeviceQueue,
+    device: &mut Device,
+    factory: &mut DeviceFactory,
+    queue: &mut DeviceQueue,
 ) {
-    let frame_context = graphics_device.begin_frame();
+    let frame_context = device.begin_frame();
     camera.update_matrices();
-    render_world.render(
-        camera,
-        &frame_context,
-        graphics_device,
-        graphics_factory,
-        graphics_queue,
-    );
-    let images = render_world.get_render_pass().capture_render_targets(
-        &frame_context,
-        command_buffer,
-        graphics_factory,
-        graphics_queue,
-    );
+    render_world.render(camera, &frame_context, device, factory, queue);
+    let images = render_world
+        .get_render_pass()
+        .capture_render_targets(&frame_context, command_buffer, factory, queue);
 
-    graphics_device.end_frame(frame_context);
+    device.end_frame(frame_context);
 
-    graphics_queue.wait_idle();
-    graphics_device.wait_idle();
+    queue.wait_idle();
+    device.wait_idle();
 
     for (image_name, scratch_image) in images {
         log::info!("testing {}/{}", test_name, image_name);
@@ -325,15 +316,15 @@ fn test_render_passes() {
     };
     log::info!("resource path set to {:?}", &resource_path);
 
-    let mut graphics_device = GraphicsDevice::new(
-        GraphicsSurfaceMode::Headless(|_: &ash::Entry, _: &ash::Instance| vk::SurfaceKHR::null()),
-        GraphicsDeviceOptions {
+    let mut device = Device::new(
+        SurfaceMode::Headless(|_: &ash::Entry, _: &ash::Instance| vk::SurfaceKHR::null()),
+        DeviceOptions {
             enable_validation: true,
             ..Default::default()
         },
     );
-    let mut graphics_queue = graphics_device.get_graphics_queue();
-    let mut graphics_factory = graphics_device.create_graphics_factory();
+    let mut queue = device.get_graphics_queue();
+    let mut factory = device.create_factory();
 
     {
         struct TemporaryCommandBuffer {
@@ -342,20 +333,20 @@ fn test_render_passes() {
         }
 
         impl TemporaryCommandBuffer {
-            fn destroy(&mut self, factory: &mut GraphicsFactory) {
+            fn destroy(&mut self, factory: &mut DeviceFactory) {
                 factory.destroy_command_pool(self.command_pool);
             }
         }
 
-        let temporary_command_pool = graphics_factory.create_command_pool(
+        let temporary_command_pool = factory.create_command_pool(
             &vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(graphics_device.get_graphics_queue_index())
+                .queue_family_index(device.get_graphics_queue_index())
                 .build(),
         );
         let mut temporary_command_buffer = TemporaryCommandBuffer {
             command_pool: temporary_command_pool,
-            command_buffer: graphics_factory.allocate_command_buffers(
+            command_buffer: factory.allocate_command_buffers(
                 &vk::CommandBufferAllocateInfo::builder()
                     .command_buffer_count(1)
                     .command_pool(temporary_command_pool)
@@ -376,9 +367,9 @@ fn test_render_passes() {
                 &world_path,
                 (RENDER_WIDTH, RENDER_HEIGHT),
                 &mut temporary_command_buffer.command_buffer,
-                &graphics_device,
-                &mut graphics_factory,
-                &mut graphics_queue,
+                &device,
+                &mut factory,
+                &mut queue,
             );
 
             let mut camera = Camera::new(
@@ -441,17 +432,17 @@ fn test_render_passes() {
                     &mut temporary_command_buffer.command_buffer,
                     &mut camera,
                     &mut render_world,
-                    &mut graphics_device,
-                    &mut graphics_factory,
-                    &mut graphics_queue,
+                    &mut device,
+                    &mut factory,
+                    &mut queue,
                 );
             }
 
-            temporary_command_buffer.destroy(&mut graphics_factory);
-            render_world.destroy(&mut graphics_factory);
+            temporary_command_buffer.destroy(&mut factory);
+            render_world.destroy(&mut factory);
         }
     }
 
-    graphics_queue.wait_idle();
-    graphics_device.wait_idle();
+    queue.wait_idle();
+    device.wait_idle();
 }

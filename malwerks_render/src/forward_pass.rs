@@ -19,7 +19,7 @@ pub struct ForwardPass {
 }
 
 impl ForwardPass {
-    pub fn new(width: u32, height: u32, device: &GraphicsDevice, factory: &mut GraphicsFactory) -> Self {
+    pub fn new(width: u32, height: u32, device: &Device, factory: &mut DeviceFactory) -> Self {
         let extra_usage_flags = if cfg!(test) {
             vk::ImageUsageFlags::TRANSFER_SRC
         } else {
@@ -234,11 +234,11 @@ impl ForwardPass {
 }
 
 impl ForwardPass {
-    fn destroy_internal(&mut self, graphics_factory: &mut GraphicsFactory) {
-        graphics_factory.deallocate_image(&self.depth_image);
-        graphics_factory.deallocate_image(&self.color_image);
-        graphics_factory.destroy_image_view(self.depth_image_view);
-        graphics_factory.destroy_image_view(self.color_image_view);
+    fn destroy_internal(&mut self, factory: &mut DeviceFactory) {
+        factory.deallocate_image(&self.depth_image);
+        factory.deallocate_image(&self.color_image);
+        factory.destroy_image_view(self.depth_image_view);
+        factory.destroy_image_view(self.color_image_view);
     }
 }
 

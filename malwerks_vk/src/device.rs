@@ -12,19 +12,19 @@ use crate::internal::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 
-pub enum GraphicsSurfaceMode<T> {
+pub enum SurfaceMode<T> {
     WindowSurface(T),
     Headless(T),
 }
 
 #[derive(Default)]
-pub struct GraphicsDeviceOptions {
+pub struct DeviceOptions {
     pub enable_validation: bool,
     pub enable_ray_tracing_nv: bool,
     pub _reserved: bool,
 }
 
-pub struct GraphicsDevice {
+pub struct Device {
     entry: ash::Entry,
     instance: ash::Instance,
     physical_device: vk::PhysicalDevice,
@@ -36,8 +36,8 @@ pub struct GraphicsDevice {
     current_gpu_frame: usize,
 }
 
-impl GraphicsDevice {
-    pub fn new<T>(surface_mode: GraphicsSurfaceMode<T>, options: GraphicsDeviceOptions) -> Self
+impl Device {
+    pub fn new<T>(surface_mode: SurfaceMode<T>, options: DeviceOptions) -> Self
     where
         T: Fn(&ash::Entry, &ash::Instance) -> vk::SurfaceKHR,
     {
@@ -51,7 +51,7 @@ impl GraphicsDevice {
             }
 
             let mut instance_extension_names = Vec::with_capacity(PLATFORM_EXTENSION_NAME_COUNT + 2);
-            if let GraphicsSurfaceMode::WindowSurface(_) = surface_mode {
+            if let SurfaceMode::WindowSurface(_) = surface_mode {
                 for ext in get_platform_extension_names().iter() {
                     instance_extension_names.push(*ext);
                 }
@@ -86,14 +86,14 @@ impl GraphicsDevice {
         };
 
         let (surface_loader, surface_khr) = match &surface_mode {
-            GraphicsSurfaceMode::WindowSurface(create_surface) => {
+            SurfaceMode::WindowSurface(create_surface) => {
                 let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
                 let surface_khr = create_surface(&entry, &instance);
 
                 (Some(surface_loader), surface_khr)
             }
 
-            GraphicsSurfaceMode::Headless(create_surface) => {
+            SurfaceMode::Headless(create_surface) => {
                 let surface_khr = create_surface(&entry, &instance);
                 (None, surface_khr)
             }
@@ -223,7 +223,7 @@ impl GraphicsDevice {
                 .enabled_features(&device_features);
 
             let mut device_extension_names = Vec::with_capacity(3);
-            if let GraphicsSurfaceMode::WindowSurface(_) = surface_mode {
+            if let SurfaceMode::WindowSurface(_) = surface_mode {
                 device_extension_names.push(ash::extensions::khr::Swapchain::name().as_ptr());
             }
             if options.enable_ray_tracing_nv {
@@ -252,7 +252,7 @@ impl GraphicsDevice {
         }
         let graphics_queue = unsafe { device.get_device_queue(graphics_queue_index, 0) };
 
-        Self {
+        Device {
             entry,
             instance,
             physical_device,
@@ -269,7 +269,7 @@ impl GraphicsDevice {
     }
 }
 
-impl GraphicsDevice {
+impl Device {
     #[doc = "https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkResetFences.html"]
     pub fn reset_fences(&self, fences: &[vk::Fence]) {
         unsafe {
@@ -305,7 +305,7 @@ impl GraphicsDevice {
     }
 }
 
-impl GraphicsDevice {
+impl Device {
     pub fn begin_frame(&self) -> FrameContext {
         FrameContext::new(self.current_gpu_frame)
     }
@@ -316,7 +316,7 @@ impl GraphicsDevice {
     }
 }
 
-impl GraphicsDevice {
+impl Device {
     pub fn get_entry(&self) -> &ash::Entry {
         &self.entry
     }
@@ -350,9 +350,9 @@ impl GraphicsDevice {
     }
 }
 
-impl GraphicsDevice {
-    pub fn create_graphics_factory(&self) -> crate::graphics_factory::GraphicsFactory {
-        crate::graphics_factory::GraphicsFactory::new(self.device.clone(), self.instance.clone(), self.physical_device)
+impl Device {
+    pub fn create_factory(&self) -> crate::device_factory::DeviceFactory {
+        crate::device_factory::DeviceFactory::new(self.device.clone(), self.instance.clone(), self.physical_device)
     }
 
     pub fn get_ray_tracing_properties(&self) -> vk::PhysicalDeviceRayTracingPropertiesNV {

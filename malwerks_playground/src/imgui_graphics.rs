@@ -27,7 +27,7 @@ pub struct ImguiGraphics {
 }
 
 impl ImguiGraphics {
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.deallocate_image(&self.font_image);
         factory.destroy_image_view(self.font_view);
         factory.destroy_sampler(self.font_sampler);
@@ -44,8 +44,8 @@ impl ImguiGraphics {
         imgui: &mut imgui::Context,
         pass: &SurfacePass,
         command_buffer: &mut CommandBuffer,
-        _device: &mut GraphicsDevice,
-        factory: &mut GraphicsFactory,
+        _device: &mut Device,
+        factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
         let vert_module = factory.create_shader_module(
@@ -277,7 +277,7 @@ impl ImguiGraphics {
     pub fn draw(
         &mut self,
         frame_context: &FrameContext,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         command_buffer: &mut CommandBuffer,
         draw_data: &imgui::DrawData,
     ) {
@@ -384,7 +384,7 @@ impl ImguiGraphics {
 
     fn create_font_texture(
         imgui: &mut imgui::Context,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         command_buffer: &mut CommandBuffer,
         queue: &mut DeviceQueue,
     ) -> HeapAllocatedResource<vk::Image> {
@@ -440,7 +440,7 @@ impl BufferSet {
         }
     }
 
-    pub fn destroy(&mut self, factory: &mut GraphicsFactory) {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         self.vertex_buffers.destroy(|res| {
             for buffer in res.iter() {
                 factory.deallocate_buffer(buffer);
@@ -453,7 +453,7 @@ impl BufferSet {
         });
     }
 
-    pub fn acquire_frame(&mut self, frame_context: &FrameContext, factory: &mut GraphicsFactory) {
+    pub fn acquire_frame(&mut self, frame_context: &FrameContext, factory: &mut DeviceFactory) {
         let vertex_buffers = self.vertex_buffers.get_mut(frame_context);
         for buffer in vertex_buffers.iter() {
             factory.deallocate_buffer(buffer);
@@ -470,7 +470,7 @@ impl BufferSet {
     pub fn create_buffer<T>(
         &mut self,
         frame_context: &FrameContext,
-        factory: &mut GraphicsFactory,
+        factory: &mut DeviceFactory,
         usage: vk::BufferUsageFlags,
         data: &[T],
     ) -> vk::Buffer {
