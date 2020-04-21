@@ -51,7 +51,7 @@ pub struct DiskMaterialInstance {
 #[derive(Serialize, Deserialize)]
 pub struct DiskMaterial {
     pub material_layout: usize,
-    pub vertex_stride: usize,
+    pub vertex_stride: u64,
     pub vertex_format: Vec<(i32, u32, usize)>, // vk::Format pretending to be i32, location, offset
     pub vertex_stage: Vec<u32>,
     pub fragment_stage: Vec<u32>,
@@ -61,15 +61,18 @@ pub struct DiskMaterial {
 #[derive(Serialize, Deserialize)]
 pub struct DiskBuffer {
     pub data: Vec<u8>,
-    pub stride: usize,
+    pub stride: u64,
     pub usage_flags: u32, // vk::BufferUsageFlags pretending to be i32
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskMesh {
     pub vertex_buffer: usize,
+    pub vertex_count: u32,
+    pub vertex_stride: u64,
+
     pub index_buffer: Option<(usize, i32)>, // buffer_id, vk::IndexType pretending to be i32
-    pub draw_count: u32,
+    pub index_count: u32,
 }
 
 #[derive(Serialize, Deserialize)]

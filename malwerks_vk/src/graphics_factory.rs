@@ -35,7 +35,29 @@ impl GraphicsFactory {
 #[derive(Clone)]
 pub struct HeapAllocatedResource<T>(pub T, pub vk_mem::AllocationInfo, vk_mem::Allocation);
 
+#[derive(Clone)]
+pub struct HeapAllocatedMemory(pub vk_mem::AllocationInfo, vk_mem::Allocation);
+
 impl GraphicsFactory {
+    pub fn allocate_heap_memory(
+        &mut self,
+        memory_requirements: &vk::MemoryRequirements,
+        allocate_info: &vk_mem::AllocationCreateInfo,
+    ) -> HeapAllocatedMemory {
+        let (alloc, info) = self
+            .allocator
+            .allocate_memory(memory_requirements, allocate_info)
+            .expect("allocate_memory() failed");
+
+        HeapAllocatedMemory(info, alloc)
+    }
+
+    pub fn deallocate_heap_memory(&mut self, memory: &HeapAllocatedMemory) {
+        self.allocator
+            .free_memory(&memory.1)
+            .expect("deallocate_memory() failed");
+    }
+
     pub fn allocate_buffer(
         &mut self,
         create_info: &vk::BufferCreateInfo,

@@ -142,10 +142,10 @@ impl StaticScenery {
                 match index_buffer {
                     Some(index_buffer) => {
                         command_buffer.bind_index_buffer(self.buffers[index_buffer.0].0, 0, index_buffer.1);
-                        command_buffer.draw_indexed(mesh.draw_count, instance.transform_data.len() as _, 0, 0, 0);
+                        command_buffer.draw_indexed(mesh.index_count, instance.transform_data.len() as _, 0, 0, 0);
                     }
                     None => {
-                        command_buffer.draw(mesh.draw_count, instance.transform_data.len() as _, 0, 0);
+                        command_buffer.draw(mesh.vertex_count, instance.transform_data.len() as _, 0, 0);
                     }
                 }
             }
@@ -155,8 +155,11 @@ impl StaticScenery {
 
 struct RenderMesh {
     vertex_buffer: usize,
+    vertex_count: u32,
+    vertex_stride: u64,
+
     index_buffer: Option<(usize, vk::IndexType)>,
-    draw_count: u32,
+    index_count: u32,
 }
 
 struct RenderInstance {
@@ -237,11 +240,14 @@ impl StaticScenery {
         for disk_mesh in &disk_scenery.meshes {
             let mesh = RenderMesh {
                 vertex_buffer: disk_mesh.vertex_buffer,
+                vertex_count: disk_mesh.vertex_count,
+                vertex_stride: disk_mesh.vertex_stride,
+
                 index_buffer: match disk_mesh.index_buffer {
                     Some(index_buffer) => Some((index_buffer.0, vk::IndexType::from_raw(index_buffer.1))),
                     None => None,
                 },
-                draw_count: disk_mesh.draw_count,
+                index_count: disk_mesh.index_count,
             };
             self.meshes.push(mesh);
         }

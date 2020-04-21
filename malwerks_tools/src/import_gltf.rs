@@ -99,21 +99,33 @@ fn import_meshes(
                 None => panic!("primitive material is not defined"),
             };
 
-            //let mut sorted_attributes: Vec<gltf::mesh::Attribute> = primitive.attributes().collect();
-            //sorted_attributes.sort_by(|a, b| {
-            //    if a.0 == gltf::mesh::Semantic::Positions {
-            //        std::cmp::Ordering::Less
-            //    } else if b.0 == gltf::mesh::Semantic::Positions {
-            //        std::cmp::Ordering::Greater
-            //    } else {
-            //        std::cmp::Ordering::Equal
-            //    }
-            //});
+            let mut sorted_attributes: Vec<gltf::mesh::Attribute> = primitive.attributes().collect();
+            let position_attribute = sorted_attributes
+                .iter()
+                .position(|attr| attr.0 == gltf::mesh::Semantic::Positions)
+                .unwrap();
+            if position_attribute != 0 {
+                sorted_attributes.swap(0, position_attribute);
+            }
+
+            if let Some(normal_attribute) = sorted_attributes
+                .iter()
+                .position(|attr| attr.0 == gltf::mesh::Semantic::Normals)
+            {
+                sorted_attributes.swap(1, normal_attribute);
+            }
+            if let Some(tangent_attribute) = sorted_attributes
+                .iter()
+                .position(|attr| attr.0 == gltf::mesh::Semantic::Tangents)
+            {
+                sorted_attributes.swap(2, tangent_attribute);
+            }
 
             let mut vertex_format = Vec::with_capacity(primitive.attributes().len());
             let mut attributes = Vec::with_capacity(primitive.attributes().len());
             let mut attribute_offset = 0;
-            for attribute in primitive.attributes() {
+
+            for attribute in sorted_attributes {
                 let accessor: gltf::accessor::Accessor = attribute.1;
                 let view = accessor.view().expect("no buffer view for attribute");
                 let offset = view.offset();
@@ -168,6 +180,8 @@ fn import_meshes(
 
             let disk_mesh = DiskMesh {
                 vertex_buffer: static_scenery.buffers.len(),
+                vertex_count: vertex_count as _,
+                vertex_stride: vertex_stride as _,
                 index_buffer: match primitive.indices() {
                     Some(indices) => Some((
                         static_scenery.buffers.len() + 1,
@@ -179,9 +193,9 @@ fn import_meshes(
                     )),
                     None => None,
                 },
-                draw_count: match primitive.indices() {
+                index_count: match primitive.indices() {
                     Some(indices) => indices.count() as _,
-                    None => vertex_count as _,
+                    None => 0,
                 },
                 //vertex_format,
                 //material_id: real_material_id,
@@ -208,7 +222,7 @@ fn import_meshes(
             // TODO: Detect and merge identical buffers
             static_scenery.buffers.push(DiskBuffer {
                 data: vertex_data,
-                stride: vertex_stride,
+                stride: vertex_stride as _,
                 usage_flags: (vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST).as_raw(),
             });
 
@@ -232,7 +246,7 @@ fn import_meshes(
 
                 static_scenery.buffers.push(DiskBuffer {
                     data: index_data,
-                    stride: index_stride,
+                    stride: index_stride as _,
                     usage_flags: (vk::BufferUsageFlags::INDEX_BUFFER | vk::BufferUsageFlags::TRANSFER_DST).as_raw(),
                 });
             }
@@ -860,6 +874,10 @@ fn convert_to_format(accessor: &gltf::accessor::Accessor) -> (usize, vk::Format,
 }
 
 fn main() {
+    if std::env::var("CARGO_MANIFEST_DIR").is_ok() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+
     pretty_env_logger::init();
 
     let args: Vec<String> = std::env::args().collect();
