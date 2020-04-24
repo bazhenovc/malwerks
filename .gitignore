@@ -1,6 +1,7 @@
 .vscode
 /target
 /assets
+Session.vim
 
 # allow specific directories
 !/assets/screenshots/**
