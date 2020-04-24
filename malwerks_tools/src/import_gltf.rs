@@ -3,8 +3,10 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use ash::vk;
 use malwerks_resources::*;
+
+use ash::vk;
+use ultraviolet as utv;
 
 mod texconv;
 use texconv::*;
@@ -43,9 +45,38 @@ fn import_gltf(file_name: &str) -> DiskStaticScenery {
     static_scenery
 }
 
+struct BoundingBox {
+    pub min: utv::vec::Vec3,
+    pub max: utv::vec::Vec3,
+}
+
+impl BoundingBox {
+    pub fn new_empty() -> Self {
+        Self {
+            min: utv::vec::Vec3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX),
+            max: utv::vec::Vec3::new(-std::f32::MAX, -std::f32::MAX, -std::f32::MAX),
+        }
+    }
+
+    pub fn insert_point(&mut self, pt: utv::vec::Vec3) {
+        self.min = self.min.min_by_component(pt);
+        self.max = self.max.max_by_component(pt);
+    }
+
+    pub fn get_transformed(&self, mat: &utv::mat::Mat4) -> Self {
+        let min = utv::vec::Vec3::from(*mat * utv::vec::Vec4::new(self.min.x, self.min.y, self.min.z, 1.0));
+        let max = utv::vec::Vec3::from(*mat * utv::vec::Vec4::new(self.max.x, self.max.y, self.max.z, 1.0));
+
+        Self {
+            min: min.min_by_component(max),
+            max: max.max_by_component(min),
+        }
+    }
+}
+
 struct PrimitiveRemap {
     mesh_id: usize,
-    primitives: Vec<(usize, usize, usize)>, // mesh_index, material_id, material_instance_id
+    primitives: Vec<(usize, usize, usize, BoundingBox)>, // mesh_index, material_id, material_instance_id
 }
 
 fn import_meshes(
@@ -176,7 +207,34 @@ fn import_meshes(
                 &attributes,
                 materials.clone(),
             );
-            per_primitive_remap.push((real_mesh_id, real_material_id, material_id));
+
+            let mut bounding_box = BoundingBox::new_empty();
+
+            let mut vertex_data = Vec::new();
+            vertex_data.resize(vertex_count * vertex_stride, 0u8);
+            for vertex_id in 0..vertex_count {
+                let mut vertex_offset = vertex_id * vertex_stride;
+                for attribute in &attributes {
+                    assert_eq!(attribute.count, vertex_count);
+                    let attribute_offset = vertex_id * attribute.stride;
+
+                    let src_slice = &attribute.data[attribute_offset..attribute_offset + attribute.stride];
+                    let dst_slice = &mut vertex_data[vertex_offset..vertex_offset + attribute.stride];
+                    dst_slice.copy_from_slice(src_slice);
+
+                    vertex_offset += attribute.stride;
+
+                    if attribute.semantic == gltf::mesh::Semantic::Positions {
+                        let f32_slice = unsafe {
+                            assert!(src_slice.len() <= std::mem::size_of::<[f32; 3]>());
+
+                            #[allow(clippy::cast_ptr_alignment)]
+                            std::ptr::read_unaligned(src_slice.as_ptr() as *const [f32; 3])
+                        };
+                        bounding_box.insert_point(utv::vec::Vec3::new(f32_slice[0], f32_slice[1], f32_slice[2]));
+                    }
+                }
+            }
 
             let disk_mesh = DiskMesh {
                 vertex_buffer: static_scenery.buffers.len(),
@@ -197,27 +255,19 @@ fn import_meshes(
                     Some(indices) => indices.count() as _,
                     None => 0,
                 },
-                //vertex_format,
-                //material_id: real_material_id,
+
+                bounding_box: {
+                    let mut min = [0.0; 3];
+                    min.copy_from_slice(bounding_box.min.as_slice());
+
+                    let mut max = [0.0; 3];
+                    max.copy_from_slice(bounding_box.max.as_slice());
+
+                    (min, max)
+                },
             };
             static_scenery.meshes.push(disk_mesh);
-
-            let mut vertex_data = Vec::new();
-            vertex_data.resize(vertex_count * vertex_stride, 0u8);
-
-            for vertex_id in 0..vertex_count {
-                let mut vertex_offset = vertex_id * vertex_stride;
-                for attribute in &attributes {
-                    assert_eq!(attribute.count, vertex_count);
-                    let attribute_offset = vertex_id * attribute.stride;
-
-                    let src_slice = &attribute.data[attribute_offset..attribute_offset + attribute.stride];
-                    let dst_slice = &mut vertex_data[vertex_offset..vertex_offset + attribute.stride];
-                    dst_slice.copy_from_slice(src_slice);
-
-                    vertex_offset += attribute.stride;
-                }
-            }
+            per_primitive_remap.push((real_mesh_id, real_material_id, material_id, bounding_box));
 
             // TODO: Detect and merge identical buffers
             static_scenery.buffers.push(DiskBuffer {
@@ -479,36 +529,64 @@ fn import_nodes(
 ) {
     use std::collections::HashMap;
 
-    let mut buckets = HashMap::<usize, HashMap<(usize, usize), Vec<[f32; 16]>>>::new();
+    struct InstanceData {
+        transforms: Vec<[f32; 16]>,
+        bounding_boxes: Vec<([f32; 3], [f32; 3])>,
+    };
+
+    let mut buckets = HashMap::<usize, HashMap<(usize, usize), InstanceData>>::new();
     for node in nodes {
         if let Some(mesh) = node.mesh() {
             log::info!("importing node {:?}", node.name().unwrap_or("<unnamed>"));
             let remap = &primitive_remap[mesh.index()];
             assert_eq!(remap.mesh_id, mesh.index());
 
-            for (mesh_index, material_id, material_instance_id) in &remap.primitives {
-                let instance_transform = {
+            for (mesh_index, material_id, material_instance_id, bounding_box) in &remap.primitives {
+                let instance_data = {
                     let node_transform = node.transform().matrix();
-                    let mut transform: [f32; 16] = [0.0; 16];
-                    (&mut transform[0..4]).copy_from_slice(&node_transform[0]);
-                    (&mut transform[4..8]).copy_from_slice(&node_transform[1]);
-                    (&mut transform[8..12]).copy_from_slice(&node_transform[2]);
-                    (&mut transform[12..16]).copy_from_slice(&node_transform[3]);
-                    transform
+
+                    let transform = utv::mat::Mat4::new(
+                        utv::vec::Vec4::from(node_transform[0]),
+                        utv::vec::Vec4::from(node_transform[1]),
+                        utv::vec::Vec4::from(node_transform[2]),
+                        utv::vec::Vec4::from(node_transform[3]),
+                    );
+                    let mut transform_data = [0.0; 16];
+                    transform_data.copy_from_slice(transform.as_slice());
+
+                    let transformed_box = bounding_box.get_transformed(&transform);
+                    let mut bounding_box_data = ([0.0; 3], [0.0; 3]);
+                    bounding_box_data.0.copy_from_slice(transformed_box.min.as_slice());
+                    bounding_box_data.1.copy_from_slice(transformed_box.max.as_slice());
+
+                    (transform_data, bounding_box_data)
                 };
 
                 match buckets.get_mut(&material_id) {
                     Some(bucket) => match bucket.get_mut(&(*mesh_index, *material_instance_id)) {
                         Some(instance) => {
-                            instance.push(instance_transform);
+                            instance.transforms.push(instance_data.0);
+                            instance.bounding_boxes.push(instance_data.1);
                         }
                         None => {
-                            bucket.insert((*mesh_index, *material_instance_id), vec![instance_transform]);
+                            bucket.insert(
+                                (*mesh_index, *material_instance_id),
+                                InstanceData {
+                                    transforms: vec![instance_data.0],
+                                    bounding_boxes: vec![instance_data.1],
+                                },
+                            );
                         }
                     },
                     None => {
                         let mut new_value = HashMap::new();
-                        new_value.insert((*mesh_index, *material_instance_id), vec![instance_transform]);
+                        new_value.insert(
+                            (*mesh_index, *material_instance_id),
+                            InstanceData {
+                                transforms: vec![instance_data.0],
+                                bounding_boxes: vec![instance_data.1],
+                            },
+                        );
                         buckets.insert(*material_id, new_value);
                     }
                 }
@@ -522,10 +600,11 @@ fn import_nodes(
             material,
             instances: instances
                 .into_iter()
-                .map(|((mesh, material_instance), transforms)| DiskRenderInstance {
+                .map(|((mesh, material_instance), instance_data)| DiskRenderInstance {
                     mesh,
                     material_instance,
-                    transforms,
+                    transforms: instance_data.transforms,
+                    bounding_boxes: instance_data.bounding_boxes,
                 })
                 .collect(),
         })

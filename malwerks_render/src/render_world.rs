@@ -182,4 +182,36 @@ impl RenderWorld {
         );
         self.forward_pass.submit_commands(frame_context, queue);
     }
+
+    pub fn get_instance_count(&self) -> usize {
+        self.static_scenery.get_instance_count()
+    }
+
+    pub fn create_instances_nv(
+        &self,
+        instance_mask: u32,
+        shader_binding_table_offset: u32,
+        flags: vk::GeometryInstanceFlagsNV,
+        acceleration_structure_reference: u64,
+    ) -> Vec<vk::AccelerationStructureInstanceNV> {
+        self.static_scenery.create_instances_nv(
+            instance_mask,
+            shader_binding_table_offset,
+            flags,
+            acceleration_structure_reference,
+        )
+    }
+
+    pub fn create_aabbs_nv(
+        &self,
+        command_buffer: &mut CommandBuffer,
+        factory: &mut DeviceFactory,
+        queue: &mut DeviceQueue,
+    ) -> (Vec<vk::GeometryNV>, HeapAllocatedResource<vk::Buffer>) {
+        self.static_scenery.create_aabbs_nv(command_buffer, factory, queue)
+    }
+
+    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
+        self.static_scenery.create_geometries_nv()
+    }
 }

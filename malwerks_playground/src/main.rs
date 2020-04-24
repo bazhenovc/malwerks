@@ -300,9 +300,9 @@ impl Game {
 fn main() {
     let resource_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         std::env::set_var("RUST_LOG", "info");
-        std::path::PathBuf::from(manifest_path).join("..").join("assets")
+        std::path::PathBuf::from(manifest_path).join("..")
     } else {
-        std::path::PathBuf::from("assets/")
+        std::path::PathBuf::from(".")
     };
 
     pretty_env_logger::init();

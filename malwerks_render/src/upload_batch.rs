@@ -57,19 +57,28 @@ impl<'a> UploadBatch<'a> {
             image_size,
             image_params,
             image_memory,
-            factory,
             self.command_buffer,
+            factory,
         );
         self.temporary_buffers.push(temp_buffer);
     }
 
     pub fn upload_buffer_memory(
         &mut self,
+        dst_stage_flags: vk::PipelineStageFlags,
         buffer: &HeapAllocatedResource<vk::Buffer>,
         buffer_memory: &[u8],
+        buffer_offset: usize,
         factory: &mut DeviceFactory,
     ) {
-        let temp_buffer = upload_buffer_memory(buffer, buffer_memory, factory, self.command_buffer);
+        let temp_buffer = upload_buffer_memory(
+            dst_stage_flags,
+            buffer,
+            buffer_memory,
+            buffer_offset,
+            self.command_buffer,
+            factory,
+        );
         self.temporary_buffers.push(temp_buffer);
     }
 
@@ -96,8 +105,8 @@ fn upload_image_memory(
     image_size: (u32, u32, u32),
     image_params: (usize, usize, usize),
     image_memory: &[u8],
-    factory: &mut DeviceFactory,
     command_buffer: &mut CommandBuffer,
+    factory: &mut DeviceFactory,
 ) -> HeapAllocatedResource<vk::Buffer> {
     let (image_block_size, num_mip_levels, num_array_layers) = image_params;
     let temp_buffer = allocate_temporary_buffer(image_memory, factory);
@@ -199,10 +208,12 @@ fn upload_image_memory(
 }
 
 fn upload_buffer_memory(
+    dst_stage_flags: vk::PipelineStageFlags,
     buffer: &HeapAllocatedResource<vk::Buffer>,
     buffer_memory: &[u8],
-    factory: &mut DeviceFactory,
+    buffer_offset: usize,
     command_buffer: &mut CommandBuffer,
+    factory: &mut DeviceFactory,
 ) -> HeapAllocatedResource<vk::Buffer> {
     let temp_buffer = allocate_temporary_buffer(buffer_memory, factory);
 
@@ -216,7 +227,7 @@ fn upload_buffer_memory(
             .src_queue_family_index(!0)
             .dst_queue_family_index(!0)
             .buffer(buffer.0)
-            .offset(0)
+            .offset(buffer_offset as _)
             .size(buffer_memory.len() as _)
             .build()],
         &[],
@@ -226,13 +237,13 @@ fn upload_buffer_memory(
         buffer.0,
         &[vk::BufferCopy::builder()
             .src_offset(0)
-            .dst_offset(0)
+            .dst_offset(buffer_offset as _)
             .size(buffer_memory.len() as _)
             .build()],
     );
     command_buffer.pipeline_barrier(
         vk::PipelineStageFlags::TRANSFER,
-        vk::PipelineStageFlags::VERTEX_SHADER,
+        dst_stage_flags,
         None,
         &[],
         &[vk::BufferMemoryBarrier::builder()
@@ -241,7 +252,7 @@ fn upload_buffer_memory(
             .src_queue_family_index(!0)
             .dst_queue_family_index(!0)
             .buffer(buffer.0)
-            .offset(0)
+            .offset(buffer_offset as _)
             .size(buffer_memory.len() as _)
             .build()],
         &[],

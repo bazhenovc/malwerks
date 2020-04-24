@@ -73,6 +73,8 @@ pub struct DiskMesh {
 
     pub index_buffer: Option<(usize, i32)>, // buffer_id, vk::IndexType pretending to be i32
     pub index_count: u32,
+
+    pub bounding_box: ([f32; 3], [f32; 3]),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -80,6 +82,7 @@ pub struct DiskRenderInstance {
     pub mesh: usize,
     pub material_instance: usize,
     pub transforms: Vec<[f32; 16]>,
+    pub bounding_boxes: Vec<([f32; 3], [f32; 3])>,
 }
 
 #[derive(Serialize, Deserialize)]
