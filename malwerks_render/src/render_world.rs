@@ -30,7 +30,6 @@ impl RenderWorld {
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
-        let forward_pass = ForwardPass::new(render_size.0, render_size.1, device, factory);
         log::info!("loading world: {:?}", &world_path);
 
         let encoded = {
@@ -46,19 +45,21 @@ impl RenderWorld {
         };
         let static_scenery = bincode::deserialize(&encoded).expect("failed to deserialize world file");
 
-        Self::from_disk(static_scenery, forward_pass, command_buffer, factory, queue)
+        Self::from_disk(&static_scenery, render_size, command_buffer, device, factory, queue)
     }
 
     pub fn from_disk(
-        disk_scenery: DiskStaticScenery,
-        forward_pass: ForwardPass,
+        disk_scenery: &DiskStaticScenery,
+        render_size: (u32, u32),
         command_buffer: &mut CommandBuffer,
+        device: &Device,
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
+        let forward_pass = ForwardPass::new(render_size.0, render_size.1, device, factory);
         let shared_frame_data = SharedFrameData::new(factory);
         let static_scenery = StaticScenery::from_disk(
-            &disk_scenery,
+            disk_scenery,
             &shared_frame_data,
             &forward_pass,
             command_buffer,
@@ -66,7 +67,7 @@ impl RenderWorld {
             queue,
         );
         let sky_box = SkyBox::from_disk(
-            &disk_scenery,
+            disk_scenery,
             &static_scenery,
             &shared_frame_data,
             &forward_pass,
@@ -186,7 +187,9 @@ impl RenderWorld {
     pub fn get_instance_count(&self) -> usize {
         self.static_scenery.get_instance_count()
     }
+}
 
+impl RenderWorld {
     pub fn create_instances_nv(
         &self,
         instance_mask: u32,

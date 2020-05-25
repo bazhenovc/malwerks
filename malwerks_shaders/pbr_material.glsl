@@ -3,9 +3,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#version 450 core
+#version 460 core
 
-#include "shader_prelude.glsl"
+#include "generated://shader_prelude.glsl"
 
 layout (std140, set = 0, binding = 0) uniform PerFrame {
     mat4 view_projection;
@@ -79,7 +79,10 @@ vec3 sample_normal() {
         #else
             vec3 ddx_uv = dFdx(vec3(NormalTexture_UV, 0.0));
             vec3 ddy_uv = dFdy(vec3(NormalTexture_UV, 0.0));
-            vec4 input_tangent = vec4((ddy_uv.t * ddx_pos - ddx_uv.t * ddy_pos) / (ddx_uv.s * ddy_uv.t - ddy_uv.s * ddx_uv.t), 1.0);
+            vec4 input_tangent = vec4(
+                (ddy_uv.t * ddx_pos - ddx_uv.t * ddy_pos) / (ddx_uv.s * ddy_uv.t - ddy_uv.s * ddx_uv.t),
+                1.0
+            );
             input_tangent.xyz = normalize(input_tangent.xyz - dot(input_tangent.xyz, input_normal) * input_normal);
         #endif
         vec3 normal = normalize(input_normal);
@@ -110,14 +113,19 @@ vec3 sample_emissive() {
     #endif
 }
 
-float specular_occlusion(float dot_nv, float occlusion, float roughness)
-{
+float specular_occlusion(float dot_nv, float occlusion, float roughness) {
     return clamp(pow(dot_nv + occlusion, roughness) - 1.0 + occlusion, 0.0, 1.0);
 }
 
-vec3 calculate_ibl(vec3 normal, vec3 view_direction, vec3 diffuse_color, vec3 specular_color,
-    float metallic, float roughness, float occlusion)
-{
+vec3 calculate_ibl(
+    vec3 normal,
+    vec3 view_direction,
+    vec3 diffuse_color,
+    vec3 specular_color,
+    float metallic,
+    float roughness,
+    float occlusion
+) {
     float dot_nv = clamp(dot(normal, view_direction), 0.0, 1.0);
     vec3 reflect_direction = normalize(reflect(-view_direction, normal));
 
@@ -132,7 +140,7 @@ vec3 calculate_ibl(vec3 normal, vec3 view_direction, vec3 diffuse_color, vec3 sp
     return diffuse_light + specular_light;
 }
 
-layout(location = 0) out vec4 Target0;
+layout (location = 0) out vec4 Target0;
 
 void main() {
     vec4 base_color = sample_base_color();
@@ -150,11 +158,47 @@ void main() {
     vec3 diffuse_color = base_color.rgb * (vec3(1.0) - F0) * (1.0 - metallic);
     vec3 specular_color = mix(F0, base_color.rgb, metallic);
 
-    vec3 ibl = calculate_ibl(normal, view_direction, diffuse_color, specular_color,
-        metallic, roughness, occlusion);
+    vec3 ibl = calculate_ibl(
+        normal,
+        view_direction,
+        diffuse_color,
+        specular_color,
+        metallic,
+        roughness,
+        occlusion
+    );
 
     vec3 final_color = ibl + emissive;
     Target0 = vec4(final_color, 1.0);
+}
+
+#endif
+
+#ifdef RAY_CLOSEST_HIT_STAGE
+
+#extension GL_NV_ray_tracing:enable
+#extension GL_EXT_nonuniform_qualifier:enable
+
+layout (set = 0, binding = 0) uniform sampler2D MaterialTextures[];
+
+// layout (set = 1, binding = 0) uniform samplerCube IemTexture;
+// layout (set = 1, binding = 1) uniform samplerCube PmremTexture;
+// layout (set = 1, binding = 2) uniform sampler2D PrecomputedBrdf;
+
+struct PrimaryRayPayload {
+    vec4 color_and_distance;
+    vec4 normal_and_id;
+};
+
+layout (location = 0) rayPayloadNV PrimaryRayPayload PrimaryRay;
+hitAttributeNV vec3 HitAttributes;
+
+void main() {
+    // PrimaryRay.color_and_distance = vec4(gl_HitTNV, gl_HitTNV, gl_HitTNV, gl_HitTNV);
+
+    vec3 barycentrics = vec3(1.0 - HitAttributes.x - HitAttributes.y, HitAttributes.x, HitAttributes.y);
+    PrimaryRay.color_and_distance = vec4(barycentrics, gl_HitTNV);
+    PrimaryRay.normal_and_id = vec4(0.0, 0.0, 1.0, intBitsToFloat(0));
 }
 
 #endif

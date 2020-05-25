@@ -56,6 +56,7 @@ pub struct DiskMaterial {
     pub vertex_stage: Vec<u32>,
     pub fragment_stage: Vec<u32>,
     //pub fragment_alpha_discard: bool,
+    pub ray_closest_hit_stage: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -100,6 +101,9 @@ pub struct DiskEnvironmentProbe {
     pub iem_image: usize,
     pub pmrem_image: usize,
     pub precomputed_brdf_image: usize,
+
+    pub ray_gen_stage: Vec<u32>,
+    pub ray_miss_stage: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize)]

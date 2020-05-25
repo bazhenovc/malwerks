@@ -17,10 +17,11 @@ pub enum SurfaceMode<T> {
     Headless(T),
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct DeviceOptions {
     pub enable_validation: bool,
     pub enable_ray_tracing_nv: bool,
+    pub enable_render_target_export: bool,
     pub _reserved: bool,
 }
 
@@ -33,6 +34,7 @@ pub struct Device {
     surface_loader: Option<ash::extensions::khr::Surface>,
     surface_khr: vk::SurfaceKHR,
     _debug_report: Option<DebugReportCallback>,
+    options: DeviceOptions,
     current_gpu_frame: usize,
 }
 
@@ -133,7 +135,7 @@ impl Device {
                 .iter()
                 .map(|device| {
                     // Extract properties and features for later use
-                    let (properties, _features) = unsafe {
+                    let (properties, features) = unsafe {
                         (
                             instance.get_physical_device_properties(*device),
                             instance.get_physical_device_features(*device),
@@ -157,7 +159,8 @@ impl Device {
 
                     if supports_needed_extensions {
                         log::info!("Suitable physical device: {:?}", device);
-                        Some((device, properties, _features))
+                        log::info!("Supported features: {:?}", features);
+                        Some((device, properties, features))
                     } else {
                         None
                     }
@@ -210,7 +213,9 @@ impl Device {
         };
 
         let device = {
-            let device_features = vk::PhysicalDeviceFeatures { ..Default::default() };
+            let mut enabled_device_features = vk::PhysicalDeviceFeatures2::default();
+            enabled_device_features.features.texture_compression_bc = vk::TRUE;
+            // enabled_device_features.features.multi_draw_indirect = vk::TRUE;
 
             let queue_priorities = [1.0];
             let queue_create_info = [vk::DeviceQueueCreateInfo::builder()
@@ -218,17 +223,33 @@ impl Device {
                 .queue_priorities(&queue_priorities)
                 .build()];
 
-            let mut device_create_info = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(&queue_create_info)
-                .enabled_features(&device_features);
-
-            let mut device_extension_names = Vec::with_capacity(3);
+            let mut device_extension_names = Vec::with_capacity(5);
             if let SurfaceMode::WindowSurface(_) = surface_mode {
                 device_extension_names.push(ash::extensions::khr::Swapchain::name().as_ptr());
             }
+
+            let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
+                .descriptor_binding_variable_descriptor_count(true)
+                .runtime_descriptor_array(true)
+                .build();
+
+            let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::builder()
+                .scalar_block_layout(true)
+                .build();
+
+            let mut device_create_info = vk::DeviceCreateInfo::builder()
+                .queue_create_infos(&queue_create_info)
+                .push_next(&mut enabled_device_features);
+
             if options.enable_ray_tracing_nv {
                 device_extension_names.push(vk::KhrGetMemoryRequirements2Fn::name().as_ptr());
                 device_extension_names.push(vk::NvRayTracingFn::name().as_ptr());
+                device_extension_names.push(vk::ExtDescriptorIndexingFn::name().as_ptr());
+                device_extension_names.push(vk::ExtScalarBlockLayoutFn::name().as_ptr());
+
+                device_create_info = device_create_info
+                    .push_next(&mut descriptor_indexing)
+                    .push_next(&mut scalar_block);
             }
 
             if !device_extension_names.is_empty() {
@@ -264,6 +285,7 @@ impl Device {
             surface_loader,
             surface_khr,
             _debug_report: debug_report,
+            options,
             current_gpu_frame: 0,
         }
     }
@@ -355,7 +377,7 @@ impl Device {
         crate::device_factory::DeviceFactory::new(self.device.clone(), self.instance.clone(), self.physical_device)
     }
 
-    pub fn get_ray_tracing_properties(&self) -> vk::PhysicalDeviceRayTracingPropertiesNV {
+    pub fn get_ray_tracing_properties_nv(&self) -> vk::PhysicalDeviceRayTracingPropertiesNV {
         let mut ray_tracing_properties = vk::PhysicalDeviceRayTracingPropertiesNV::default();
         let mut properties = vk::PhysicalDeviceProperties2::builder().push_next(&mut ray_tracing_properties);
         unsafe {
@@ -363,6 +385,10 @@ impl Device {
                 .get_physical_device_properties2(self.physical_device, &mut properties);
         }
         ray_tracing_properties
+    }
+
+    pub fn get_device_options(&self) -> DeviceOptions {
+        self.options
     }
 }
 

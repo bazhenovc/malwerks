@@ -100,7 +100,6 @@ fn capture_render_target(
         &[],
         &[],
         &[vk::ImageMemoryBarrier::builder()
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)
             .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
             .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
@@ -320,6 +319,7 @@ fn test_render_passes() {
         SurfaceMode::Headless(|_: &ash::Entry, _: &ash::Instance| vk::SurfaceKHR::null()),
         DeviceOptions {
             enable_validation: true,
+            enable_render_target_export: true,
             ..Default::default()
         },
     );

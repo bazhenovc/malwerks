@@ -131,15 +131,12 @@ impl StaticScenery {
                 );
 
                 let mesh = &self.meshes[instance.mesh];
-                let vertex_buffer = mesh.vertex_buffer;
-                let index_buffer = mesh.index_buffer;
-
                 command_buffer.bind_vertex_buffers(
                     0,
-                    &[self.buffers[vertex_buffer].0, instance.transform_buffer.0],
+                    &[self.buffers[mesh.vertex_buffer].0, instance.transform_buffer.0],
                     &[0, 0],
                 );
-                match index_buffer {
+                match mesh.index_buffer {
                     Some(index_buffer) => {
                         command_buffer.bind_index_buffer(self.buffers[index_buffer.0].0, 0, index_buffer.1);
                         command_buffer.draw_indexed(mesh.index_count, instance.transform_data.len() as _, 0, 0, 0);
@@ -159,151 +156,6 @@ impl StaticScenery {
                 .iter()
                 .fold(0usize, |rr, instance| rr + instance.transform_data.len())
         })
-    }
-
-    pub fn create_instances_nv(
-        &self,
-        instance_mask: u32,
-        shader_binding_table_offset: u32,
-        flags: vk::GeometryInstanceFlagsNV,
-        acceleration_structure_reference: u64,
-    ) -> Vec<vk::AccelerationStructureInstanceNV> {
-        let num_instances = self.get_instance_count();
-        let mut instances = Vec::with_capacity(num_instances);
-        for bucket in &self.buckets {
-            for instance in &bucket.instances {
-                for instance_transform in &instance.transform_data {
-                    let instance_id = instances.len() as u32;
-
-                    let transform = vk::TransformMatrixKHR {
-                        matrix: {
-                            let mut matrix = [0.0; 12];
-                            matrix[0..3].copy_from_slice(&instance_transform[0..3]);
-                            matrix[3..6].copy_from_slice(&instance_transform[4..7]);
-                            matrix[6..9].copy_from_slice(&instance_transform[8..11]);
-                            matrix[9..12].copy_from_slice(&instance_transform[12..15]);
-
-                            matrix
-                        },
-                    };
-
-                    let instance_custom_index_and_mask = (instance_id & 0x00ff_ffff) | (instance_mask << 24);
-                    let instance_shader_binding_table_record_offset_and_flags =
-                        (shader_binding_table_offset & 0x00ff_ffff) | ((flags.as_raw() as u32) << 24);
-
-                    instances.push(vk::AccelerationStructureInstanceNV {
-                        transform,
-                        instance_custom_index_and_mask,
-                        instance_shader_binding_table_record_offset_and_flags,
-                        acceleration_structure_reference,
-                    });
-                }
-            }
-        }
-        instances
-    }
-
-    pub fn create_aabbs_nv(
-        &self,
-        command_buffer: &mut CommandBuffer,
-        factory: &mut DeviceFactory,
-        queue: &mut DeviceQueue,
-    ) -> (Vec<vk::GeometryNV>, HeapAllocatedResource<vk::Buffer>) {
-        let mut upload_batch = UploadBatch::new(command_buffer);
-
-        let aabb_stride = std::mem::size_of::<([f32; 3], [f32; 3])>();
-        let aabb_buffer = factory.allocate_buffer(
-            &vk::BufferCreateInfo::builder()
-                .size((aabb_stride * self.meshes.len()) as _)
-                .usage(vk::BufferUsageFlags::RAY_TRACING_NV | vk::BufferUsageFlags::TRANSFER_DST)
-                .build(),
-            &vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::GpuOnly,
-                required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                ..Default::default()
-            },
-        );
-
-        let mut buffer_offset = 0;
-        let mut aabbs = Vec::with_capacity(self.meshes.len());
-        for mesh in &self.meshes {
-            let buffer_memory = {
-                let mut slice = [0.0; 6];
-                slice[0..3].copy_from_slice(&mesh.bounding_box.0);
-                slice[3..6].copy_from_slice(&mesh.bounding_box.1);
-
-                unsafe {
-                    std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * std::mem::size_of::<f32>())
-                }
-            };
-            upload_batch.upload_buffer_memory(
-                vk::PipelineStageFlags::RAY_TRACING_SHADER_NV,
-                &aabb_buffer,
-                &buffer_memory,
-                buffer_offset,
-                factory,
-            );
-
-            aabbs.push(
-                vk::GeometryNV::builder()
-                    .geometry_type(vk::GeometryTypeNV::AABBS_NV)
-                    .geometry(
-                        vk::GeometryDataNV::builder()
-                            .aabbs(
-                                vk::GeometryAABBNV::builder()
-                                    .aabb_data(aabb_buffer.0)
-                                    .num_aab_bs(1)
-                                    .stride(aabb_stride as _)
-                                    .offset(buffer_offset as _)
-                                    .build(),
-                            )
-                            .build(),
-                    )
-                    .build(),
-            );
-
-            buffer_offset += aabb_stride;
-        }
-
-        upload_batch.flush(factory, queue);
-        (aabbs, aabb_buffer)
-    }
-
-    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
-        let mut geometries = Vec::with_capacity(self.meshes.len());
-        for mesh in &self.meshes {
-            let (index_buffer, index_format) = match mesh.index_buffer {
-                Some(buffer) => (self.buffers[buffer.0].0, buffer.1),
-                None => (vk::Buffer::null(), vk::IndexType::NONE_NV),
-            };
-
-            geometries.push(
-                vk::GeometryNV::builder()
-                    .flags(vk::GeometryFlagsNV::OPAQUE_NV)
-                    .geometry_type(vk::GeometryTypeNV::TRIANGLES_NV)
-                    .geometry(
-                        vk::GeometryDataNV::builder()
-                            .triangles(
-                                vk::GeometryTrianglesNV::builder()
-                                    .vertex_data(self.buffers[mesh.vertex_buffer].0)
-                                    .vertex_offset(0)
-                                    .vertex_count(mesh.vertex_count)
-                                    .vertex_stride(mesh.vertex_stride)
-                                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
-                                    .index_data(index_buffer)
-                                    .index_offset(0)
-                                    .index_count(mesh.index_count)
-                                    .index_type(index_format)
-                                    .transform_data(vk::Buffer::null())
-                                    .transform_offset(0)
-                                    .build(),
-                            )
-                            .build(),
-                    )
-                    .build(),
-            );
-        }
-        geometries
     }
 
     pub fn get_image(&self, id: usize) -> vk::Image {
@@ -986,5 +838,152 @@ impl StaticScenery {
             descriptor_set_layout,
             descriptor_sets,
         };
+    }
+}
+
+impl StaticScenery {
+    pub fn create_instances_nv(
+        &self,
+        instance_mask: u32,
+        shader_binding_table_offset: u32,
+        flags: vk::GeometryInstanceFlagsNV,
+        acceleration_structure_reference: u64,
+    ) -> Vec<vk::AccelerationStructureInstanceNV> {
+        let num_instances = self.get_instance_count();
+        let mut instances = Vec::with_capacity(num_instances);
+        for bucket in &self.buckets {
+            for instance in &bucket.instances {
+                for instance_transform in &instance.transform_data {
+                    let instance_id = instances.len() as u32;
+
+                    let transform = vk::TransformMatrixKHR {
+                        matrix: {
+                            let mut matrix = [0.0; 12];
+                            matrix[0..3].copy_from_slice(&instance_transform[0..3]);
+                            matrix[3..6].copy_from_slice(&instance_transform[4..7]);
+                            matrix[6..9].copy_from_slice(&instance_transform[8..11]);
+                            matrix[9..12].copy_from_slice(&instance_transform[12..15]);
+
+                            matrix
+                        },
+                    };
+
+                    let instance_custom_index_and_mask = (instance_id & 0x00ff_ffff) | (instance_mask << 24);
+                    let instance_shader_binding_table_record_offset_and_flags =
+                        (shader_binding_table_offset & 0x00ff_ffff) | ((flags.as_raw() as u32) << 24);
+
+                    instances.push(vk::AccelerationStructureInstanceNV {
+                        transform,
+                        instance_custom_index_and_mask,
+                        instance_shader_binding_table_record_offset_and_flags,
+                        acceleration_structure_reference,
+                    });
+                }
+            }
+        }
+        instances
+    }
+
+    pub fn create_aabbs_nv(
+        &self,
+        command_buffer: &mut CommandBuffer,
+        factory: &mut DeviceFactory,
+        queue: &mut DeviceQueue,
+    ) -> (Vec<vk::GeometryNV>, HeapAllocatedResource<vk::Buffer>) {
+        let mut upload_batch = UploadBatch::new(command_buffer);
+
+        let aabb_stride = std::mem::size_of::<([f32; 3], [f32; 3])>();
+        let aabb_buffer = factory.allocate_buffer(
+            &vk::BufferCreateInfo::builder()
+                .size((aabb_stride * self.meshes.len()) as _)
+                .usage(vk::BufferUsageFlags::RAY_TRACING_NV | vk::BufferUsageFlags::TRANSFER_DST)
+                .build(),
+            &vk_mem::AllocationCreateInfo {
+                usage: vk_mem::MemoryUsage::GpuOnly,
+                required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+                ..Default::default()
+            },
+        );
+
+        let mut buffer_offset = 0;
+        let mut aabbs = Vec::with_capacity(self.meshes.len());
+        for mesh in &self.meshes {
+            let buffer_memory = {
+                let mut slice = [0.0; 6];
+                slice[0..3].copy_from_slice(&mesh.bounding_box.0);
+                slice[3..6].copy_from_slice(&mesh.bounding_box.1);
+
+                unsafe {
+                    std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * std::mem::size_of::<f32>())
+                }
+            };
+            upload_batch.upload_buffer_memory(
+                vk::PipelineStageFlags::RAY_TRACING_SHADER_NV,
+                &aabb_buffer,
+                &buffer_memory,
+                buffer_offset,
+                factory,
+            );
+
+            aabbs.push(
+                vk::GeometryNV::builder()
+                    .geometry_type(vk::GeometryTypeNV::AABBS_NV)
+                    .geometry(
+                        vk::GeometryDataNV::builder()
+                            .aabbs(
+                                vk::GeometryAABBNV::builder()
+                                    .aabb_data(aabb_buffer.0)
+                                    .num_aab_bs(1)
+                                    .stride(aabb_stride as _)
+                                    .offset(buffer_offset as _)
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                    .build(),
+            );
+
+            buffer_offset += aabb_stride;
+        }
+
+        upload_batch.flush(factory, queue);
+        (aabbs, aabb_buffer)
+    }
+
+    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
+        let mut geometries = Vec::with_capacity(self.meshes.len());
+        for mesh in &self.meshes {
+            let (index_buffer, index_format) = match mesh.index_buffer {
+                Some(buffer) => (self.buffers[buffer.0].0, buffer.1),
+                None => (vk::Buffer::null(), vk::IndexType::NONE_NV),
+            };
+
+            geometries.push(
+                vk::GeometryNV::builder()
+                    .flags(vk::GeometryFlagsNV::OPAQUE_NV)
+                    .geometry_type(vk::GeometryTypeNV::TRIANGLES_NV)
+                    .geometry(
+                        vk::GeometryDataNV::builder()
+                            .triangles(
+                                vk::GeometryTrianglesNV::builder()
+                                    .vertex_data(self.buffers[mesh.vertex_buffer].0)
+                                    .vertex_offset(0)
+                                    .vertex_count(mesh.vertex_count)
+                                    .vertex_stride(mesh.vertex_stride)
+                                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
+                                    .index_data(index_buffer)
+                                    .index_offset(0)
+                                    .index_count(mesh.index_count)
+                                    .index_type(index_format)
+                                    .transform_data(vk::Buffer::null())
+                                    .transform_offset(0)
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                    .build(),
+            );
+        }
+        geometries
     }
 }

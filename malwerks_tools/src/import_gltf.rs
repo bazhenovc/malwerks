@@ -449,14 +449,9 @@ fn generate_material<'a>(
         )
         .expect("failed to write shader prelude file");
 
-        let pbr_material_glsl = std::fs::read_to_string(
-            base_path
-                .join("..")
-                .join("..")
-                .join("malwerks_shaders")
-                .join("pbr_material.glsl"),
-        )
-        .expect("failed to open pbr_material.glsl");
+        let shaders_path = base_path.join("..").join("..").join("malwerks_shaders");
+        let pbr_material_glsl =
+            std::fs::read_to_string(shaders_path.join("pbr_material.glsl")).expect("failed to open pbr_material.glsl");
 
         let id = temp_preludes.len();
         temp_preludes.push(shader_prelude.clone());
@@ -467,13 +462,20 @@ fn generate_material<'a>(
         compile_options.set_warnings_as_errors();
         compile_options.set_include_callback(
             |requested_source_path, _directive_type, _contained_within_path, _recursion_depth| {
-                if requested_source_path == "shader_prelude.glsl" {
+                if requested_source_path == "generated://shader_prelude.glsl" {
                     Ok(shaderc::ResolvedInclude {
-                        resolved_name: String::from("shader_prelude.glsl"),
+                        resolved_name: String::from("generated://shader_prelude.glsl"),
                         content: shader_prelude.clone(),
                     })
                 } else {
-                    Err(format!("failed to find include file: {}", requested_source_path))
+                    match std::fs::read_to_string(shaders_path.join(&requested_source_path)) {
+                        Ok(included_source) => Ok(shaderc::ResolvedInclude {
+                            resolved_name: String::from(requested_source_path),
+                            content: included_source,
+                        }),
+
+                        Err(e) => Err(format!("failed to open {}: {}", &requested_source_path, e)),
+                    }
                 }
             },
         );
@@ -481,6 +483,10 @@ fn generate_material<'a>(
         vertex_stage_options.add_macro_definition("VERTEX_STAGE", None);
         let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
         fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
+        let mut ray_closest_hit_options = compile_options
+            .clone()
+            .expect("failed to clone ray closest hit options");
+        ray_closest_hit_options.add_macro_definition("RAY_CLOSEST_HIT_STAGE", None);
 
         let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
         let vertex_stage = compiler
@@ -501,6 +507,15 @@ fn generate_material<'a>(
                 Some(&fragment_stage_options),
             )
             .expect("failed to compile fragment shader");
+        let ray_closest_hit_stage = compiler
+            .compile_into_spirv(
+                &pbr_material_glsl,
+                shaderc::ShaderKind::ClosestHit,
+                "pbr_material.glsl",
+                "main",
+                Some(&ray_closest_hit_options),
+            )
+            .expect("failed to compile ray closest hit shader");
 
         static_scenery.materials.push(DiskMaterial {
             material_layout: static_scenery
@@ -516,6 +531,7 @@ fn generate_material<'a>(
             vertex_stage: Vec::from(vertex_stage.as_binary()),
             fragment_stage: Vec::from(fragment_stage.as_binary()),
             //fragment_alpha_discard: has_alpha_test,
+            ray_closest_hit_stage: Vec::from(ray_closest_hit_stage.as_binary()),
         });
 
         id
@@ -705,9 +721,9 @@ fn import_probes(static_scenery: &mut DiskStaticScenery, base_path: &std::path::
             .join("..")
             .join("..")
             .join("malwerks_shaders")
-            .join("sky_box.glsl"),
+            .join("environment_probe.glsl"),
     )
-    .expect("failed to open sky_box.glsl");
+    .expect("failed to open environment_probe.glsl");
 
     let mut compile_options = shaderc::CompileOptions::new().expect("failed to initialize GLSL compiler options");
     compile_options.set_source_language(shaderc::SourceLanguage::GLSL);
@@ -719,13 +735,18 @@ fn import_probes(static_scenery: &mut DiskStaticScenery, base_path: &std::path::
     let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
     fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
 
+    let mut ray_gen_options = compile_options.clone().expect("failed to clone ray gen options");
+    ray_gen_options.add_macro_definition("RAY_GEN_STAGE", None);
+    let mut ray_miss_options = compile_options.clone().expect("failed to clone ray miss options");
+    ray_miss_options.add_macro_definition("RAY_MISS_STAGE", None);
+
     let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
     let skybox_vertex_stage = Vec::from(
         compiler
             .compile_into_spirv(
                 &skybox_glsl,
                 shaderc::ShaderKind::Vertex,
-                "sky_box.glsl",
+                "environment_probe.glsl",
                 "main",
                 Some(&vertex_stage_options),
             )
@@ -737,11 +758,36 @@ fn import_probes(static_scenery: &mut DiskStaticScenery, base_path: &std::path::
             .compile_into_spirv(
                 &skybox_glsl,
                 shaderc::ShaderKind::Fragment,
-                "sky_box.glsl",
+                "environment_probe.glsl",
                 "main",
                 Some(&fragment_stage_options),
             )
             .expect("failed to compile fragment shader")
+            .as_binary(),
+    );
+
+    let ray_gen_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &skybox_glsl,
+                shaderc::ShaderKind::RayGeneration,
+                "environment_probe.glsl",
+                "main",
+                Some(&ray_gen_options),
+            )
+            .expect("failed to compile skybox ray miss shader")
+            .as_binary(),
+    );
+    let ray_miss_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &skybox_glsl,
+                shaderc::ShaderKind::Miss,
+                "environment_probe.glsl",
+                "main",
+                Some(&ray_miss_options),
+            )
+            .expect("failed to compile skybox ray miss shader")
             .as_binary(),
     );
 
@@ -750,9 +796,13 @@ fn import_probes(static_scenery: &mut DiskStaticScenery, base_path: &std::path::
         skybox_image: probe_image_id,
         skybox_vertex_stage,
         skybox_fragment_stage,
+
         iem_image: probe_image_id + 1,
         pmrem_image: probe_image_id + 2,
         precomputed_brdf_image: probe_image_id + 3,
+
+        ray_gen_stage,
+        ray_miss_stage,
     });
 }
 

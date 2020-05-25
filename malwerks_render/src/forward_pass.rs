@@ -20,7 +20,7 @@ pub struct ForwardPass {
 
 impl ForwardPass {
     pub fn new(width: u32, height: u32, device: &Device, factory: &mut DeviceFactory) -> Self {
-        let extra_usage_flags = if cfg!(test) {
+        let extra_usage_flags = if device.get_device_options().enable_render_target_export {
             vk::ImageUsageFlags::TRANSFER_SRC
         } else {
             vk::ImageUsageFlags::default()

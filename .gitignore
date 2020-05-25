@@ -1,7 +1,12 @@
+.vs
 .vscode
+.idea
+.nsight
 /target
 /assets
 Session.vim
+*.sublime-project
+*.sublime-workspace
 
 # allow specific directories
 !/assets/screenshots/**
