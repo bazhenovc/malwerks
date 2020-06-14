@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 malwerks_dds = { path = "../malwerks_dds" }
+malwerks_ply = { path = "../malwerks_ply" }
 malwerks_resources = { path = "../malwerks_resources" }
 serde = "*"
 ash = "*"
