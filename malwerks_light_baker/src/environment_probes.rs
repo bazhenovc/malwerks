@@ -145,8 +145,8 @@ impl EnvironmentProbes {
 
         // TODO: ensure these never reallocate
         let mut temp_writes = Vec::with_capacity(descriptor_sets.len());
-        let mut temp_acceleration_structures = Vec::with_capacity(descriptor_sets.len() * 1);
-        let mut temp_acceleration_structure_infos = Vec::with_capacity(descriptor_sets.len() * 1);
+        let mut temp_acceleration_structures = Vec::with_capacity(descriptor_sets.len());
+        let mut temp_acceleration_structure_infos = Vec::with_capacity(descriptor_sets.len());
         let mut temp_image_infos = Vec::with_capacity(descriptor_sets.len() * 6);
         let mut temp_ray_tracing_pipelines = Vec::with_capacity(static_scenery.environment_probes.len());
 
@@ -360,7 +360,7 @@ impl EnvironmentProbes {
             let ray_gen_offset = pipeline_id;
 
             let ray_miss_buffer = self.shader_binding_table.get_table_buffer().0;
-            let ray_miss_offset = pipeline_id + 1 * table_stride;
+            let ray_miss_offset = pipeline_id + table_stride;
 
             let ray_hit_buffer = self.shader_binding_table.get_table_buffer().0;
             let ray_hit_offset = pipeline_id + 2 * table_stride;
