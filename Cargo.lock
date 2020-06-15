@@ -811,7 +811,6 @@ dependencies = [
  "bincode",
  "bytemuck",
  "log",
- "logging_timer",
  "seek_bufread",
  "serde",
 ]

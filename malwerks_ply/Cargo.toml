@@ -9,5 +9,4 @@ bytemuck = "*"
 seek_bufread = "*" # TODO: remove this once "bufreader_seek_relative" is available
 serde = "*"
 bincode = "*"
-logging_timer = "*"
 log = "*"
