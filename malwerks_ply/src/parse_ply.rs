@@ -231,7 +231,7 @@ where
         }
     }
 
-    //match buf_reader
+    //buf_reader
     //    .read_exact(&mut [0u8; 1])
     //    .expect_err("end of file test failed");
 

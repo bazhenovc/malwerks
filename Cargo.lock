@@ -808,11 +808,9 @@ dependencies = [
 name = "malwerks_ply"
 version = "0.1.0"
 dependencies = [
- "bincode",
  "bytemuck",
  "log",
  "seek_bufread",
- "serde",
 ]
 
 [[package]]

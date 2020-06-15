@@ -7,6 +7,4 @@ edition = "2018"
 [dependencies]
 bytemuck = "*"
 seek_bufread = "*" # TODO: remove this once "bufreader_seek_relative" is available
-serde = "*"
-bincode = "*"
 log = "*"
