@@ -12,10 +12,14 @@ mod input_map;
 mod surface_pass;
 mod surface_winit;
 
+// use malwerks_light_baker::*;
 use malwerks_render::*;
 
 const RENDER_WIDTH: u32 = 1920;
 const RENDER_HEIGHT: u32 = 1080;
+
+// const ENVIRONMENT_PROBE_WIDTH: u32 = 1024;
+// const ENVIRONMENT_PROBE_HEIGHT: u32 = 1024;
 
 //const RENDER_WIDTH: u32 = 2880;
 //const RENDER_HEIGHT: u32 = 1620;
@@ -52,6 +56,9 @@ struct Game {
 
     input_map: input_map::InputMap,
     camera_state: camera_state::CameraState,
+
+    // acceleration_structure: AccelerationStructure,
+    // environment_probes: EnvironmentProbes,
 }
 
 impl Drop for Game {
@@ -63,6 +70,9 @@ impl Drop for Game {
         self.imgui_graphics.destroy(&mut self.factory);
         self.render_world.destroy(&mut self.factory);
         self.post_process.destroy(&mut self.factory);
+
+        // self.acceleration_structure.destroy(&mut self.factory);
+        // self.environment_probes.destroy(&mut self.factory);
 
         self.surface_pass.destroy(&mut self.factory);
         self.surface.destroy(&mut self.factory);
@@ -78,6 +88,7 @@ impl Game {
             }),
             DeviceOptions {
                 enable_validation: true,
+                // enable_ray_tracing_nv: true,
                 ..Default::default()
             },
         );
@@ -129,8 +140,20 @@ impl Game {
         }
         imgui.set_ini_filename(None);
 
-        let render_world = RenderWorld::from_file(
-            world_path,
+        log::info!("loading world: {:?}", world_path);
+        let static_scenery = {
+            use std::io::Read;
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .open(world_path)
+                .expect("failed to open world file");
+
+            let mut encoded = Vec::new();
+            file.read_to_end(&mut encoded).expect("failed to read world file");
+            bincode::deserialize(&encoded).expect("failed to deserialize world file")
+        };
+        let render_world = RenderWorld::from_disk(
+            &static_scenery,
             (RENDER_WIDTH, RENDER_HEIGHT),
             &mut temporary_command_buffer.command_buffer,
             &device,
@@ -144,6 +167,22 @@ impl Game {
             &surface_pass,
             &mut factory,
         );
+
+        let ray_tracing_properties = device.get_ray_tracing_properties_nv();
+        log::info!("{:?}", &ray_tracing_properties);
+
+        // let mut acceleration_structure = AccelerationStructure::new(&render_world, &mut factory);
+        // acceleration_structure.build(&mut temporary_command_buffer.command_buffer, &mut factory, &mut queue);
+
+        // let mut environment_probes = EnvironmentProbes::new(
+        //     ENVIRONMENT_PROBE_WIDTH,
+        //     ENVIRONMENT_PROBE_HEIGHT,
+        //     &static_scenery,
+        //     &ray_tracing_properties,
+        //     &acceleration_structure,
+        //     &mut factory,
+        // );
+        // environment_probes.build(&mut temporary_command_buffer.command_buffer, &mut factory, &mut queue);
 
         let input_map = {
             use input_map::*;
@@ -194,6 +233,9 @@ impl Game {
                 width: RENDER_WIDTH,
                 height: RENDER_HEIGHT,
             }),
+
+            // acceleration_structure,
+            // environment_probes,
         }
     }
 
@@ -214,6 +256,15 @@ impl Game {
     }
 
     fn draw_and_present(&mut self, window: &winit::window::Window, gilrs: &gilrs::Gilrs) {
+        // self.environment_probes.bake_environment_probes(
+        //     ENVIRONMENT_PROBE_WIDTH,
+        //     ENVIRONMENT_PROBE_HEIGHT,
+        //     &mut self.temporary_command_buffer.command_buffer,
+        //     &mut self.device,
+        //     &mut self.factory,
+        //     &mut self.queue,
+        // );
+
         let time_now = std::time::Instant::now();
         let time_delta = time_now - self.frame_time;
         self.frame_time = time_now;

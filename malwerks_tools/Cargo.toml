@@ -30,3 +30,7 @@ path = "src/precompute_brdf.rs"
 [[bin]]
 name = "convert_probe"
 path = "src/convert_probe.rs"
+
+# [[bin]]
+# name = "bake_lightmaps"
+# path = "src/bake_lightmaps.rs"

@@ -25,7 +25,7 @@ impl DeviceQueue {
             let error_code = ash_static().fp_10.queue_wait_idle(self.0);
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("queue_submit() failed"),
+                err => panic!("queue_submit() failed: {:?}", err),
             }
         }
     }
@@ -38,7 +38,7 @@ impl DeviceQueue {
                 .queue_submit(self.0, submits.len() as _, submits.as_ptr(), fence);
             match error_code {
                 vk::Result::SUCCESS => {}
-                _ => panic!("queue_submit() failed"),
+                err => panic!("queue_wait_idle() failed: {:?}", err),
             }
         }
     }

@@ -842,12 +842,48 @@ impl StaticScenery {
 }
 
 impl StaticScenery {
+    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
+        let mut geometries = Vec::with_capacity(self.meshes.len());
+        for mesh in &self.meshes {
+            let (index_buffer, index_format) = match mesh.index_buffer {
+                Some(buffer) => (self.buffers[buffer.0].0, buffer.1),
+                None => (vk::Buffer::null(), vk::IndexType::NONE_NV),
+            };
+            geometries.push(
+                vk::GeometryNV::builder()
+                    .flags(vk::GeometryFlagsNV::OPAQUE_NV)
+                    .geometry_type(vk::GeometryTypeNV::TRIANGLES_NV)
+                    .geometry(
+                        vk::GeometryDataNV::builder()
+                            .triangles(
+                                vk::GeometryTrianglesNV::builder()
+                                    .vertex_data(self.buffers[mesh.vertex_buffer].0)
+                                    .vertex_offset(0)
+                                    .vertex_count(mesh.vertex_count)
+                                    .vertex_stride(mesh.vertex_stride)
+                                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
+                                    .index_data(index_buffer)
+                                    .index_offset(0)
+                                    .index_count(mesh.index_count)
+                                    .index_type(index_format)
+                                    .transform_data(vk::Buffer::null())
+                                    .transform_offset(0)
+                                    .build(),
+                            )
+                            .build(),
+                    )
+                    .build(),
+            );
+        }
+        geometries
+    }
+
     pub fn create_instances_nv(
         &self,
         instance_mask: u32,
         shader_binding_table_offset: u32,
         flags: vk::GeometryInstanceFlagsNV,
-        acceleration_structure_reference: u64,
+        bottom_level_acceleration_structure: &[u64],
     ) -> Vec<vk::AccelerationStructureInstanceNV> {
         let num_instances = self.get_instance_count();
         let mut instances = Vec::with_capacity(num_instances);
@@ -855,14 +891,15 @@ impl StaticScenery {
             for instance in &bucket.instances {
                 for instance_transform in &instance.transform_data {
                     let instance_id = instances.len() as u32;
+                    let acceleration_structure_reference = bottom_level_acceleration_structure[instance.mesh];
 
                     let transform = vk::TransformMatrixKHR {
                         matrix: {
                             let mut matrix = [0.0; 12];
                             matrix[0..3].copy_from_slice(&instance_transform[0..3]);
-                            matrix[3..6].copy_from_slice(&instance_transform[4..7]);
-                            matrix[6..9].copy_from_slice(&instance_transform[8..11]);
-                            matrix[9..12].copy_from_slice(&instance_transform[12..15]);
+                            matrix[3..6].copy_from_slice(&instance_transform[3..6]);
+                            matrix[6..9].copy_from_slice(&instance_transform[6..9]);
+                            matrix[9..12].copy_from_slice(&instance_transform[9..12]);
 
                             matrix
                         },
@@ -948,42 +985,5 @@ impl StaticScenery {
 
         upload_batch.flush(factory, queue);
         (aabbs, aabb_buffer)
-    }
-
-    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
-        let mut geometries = Vec::with_capacity(self.meshes.len());
-        for mesh in &self.meshes {
-            let (index_buffer, index_format) = match mesh.index_buffer {
-                Some(buffer) => (self.buffers[buffer.0].0, buffer.1),
-                None => (vk::Buffer::null(), vk::IndexType::NONE_NV),
-            };
-
-            geometries.push(
-                vk::GeometryNV::builder()
-                    .flags(vk::GeometryFlagsNV::OPAQUE_NV)
-                    .geometry_type(vk::GeometryTypeNV::TRIANGLES_NV)
-                    .geometry(
-                        vk::GeometryDataNV::builder()
-                            .triangles(
-                                vk::GeometryTrianglesNV::builder()
-                                    .vertex_data(self.buffers[mesh.vertex_buffer].0)
-                                    .vertex_offset(0)
-                                    .vertex_count(mesh.vertex_count)
-                                    .vertex_stride(mesh.vertex_stride)
-                                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
-                                    .index_data(index_buffer)
-                                    .index_offset(0)
-                                    .index_count(mesh.index_count)
-                                    .index_type(index_format)
-                                    .transform_data(vk::Buffer::null())
-                                    .transform_offset(0)
-                                    .build(),
-                            )
-                            .build(),
-                    )
-                    .build(),
-            );
-        }
-        geometries
     }
 }

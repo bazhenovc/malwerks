@@ -8,12 +8,15 @@ default-run = "malwerks_playground"
 [dependencies]
 malwerks_vk = { path = "../malwerks_vk" }
 malwerks_render = { path = "../malwerks_render" }
+malwerks_light_baker = { path = "../malwerks_light_baker" }
+
 ash = "*"
 log = "*"
 pretty_env_logger = "*"
 winit = "*"
 imgui = "*"
 gilrs = "*"
+bincode = "*"
 
 [build-dependencies]
 depgraph = "*"

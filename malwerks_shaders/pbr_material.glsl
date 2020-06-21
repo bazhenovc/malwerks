@@ -5,6 +5,11 @@
 
 #version 460 core
 
+#ifdef RAY_TRACING
+#extension GL_NV_ray_tracing:enable
+#extension GL_EXT_nonuniform_qualifier:enable
+#endif
+
 #include "generated://shader_prelude.glsl"
 
 layout (std140, set = 0, binding = 0) uniform PerFrame {
@@ -175,10 +180,6 @@ void main() {
 #endif
 
 #ifdef RAY_CLOSEST_HIT_STAGE
-
-#extension GL_NV_ray_tracing:enable
-#extension GL_EXT_nonuniform_qualifier:enable
-
 layout (set = 0, binding = 0) uniform sampler2D MaterialTextures[];
 
 // layout (set = 1, binding = 0) uniform samplerCube IemTexture;
@@ -187,18 +188,16 @@ layout (set = 0, binding = 0) uniform sampler2D MaterialTextures[];
 
 struct PrimaryRayPayload {
     vec4 color_and_distance;
-    vec4 normal_and_id;
+    // vec4 normal_and_id;
 };
 
 layout (location = 0) rayPayloadNV PrimaryRayPayload PrimaryRay;
 hitAttributeNV vec3 HitAttributes;
 
 void main() {
-    // PrimaryRay.color_and_distance = vec4(gl_HitTNV, gl_HitTNV, gl_HitTNV, gl_HitTNV);
-
     vec3 barycentrics = vec3(1.0 - HitAttributes.x - HitAttributes.y, HitAttributes.x, HitAttributes.y);
-    PrimaryRay.color_and_distance = vec4(barycentrics, gl_HitTNV);
-    PrimaryRay.normal_and_id = vec4(0.0, 0.0, 1.0, intBitsToFloat(0));
+    PrimaryRay.color_and_distance = vec4(barycentrics * factor, gl_HitTNV);
+    // PrimaryRay.normal_and_id = vec4(0.0, 0.0, 1.0, intBitsToFloat(0));
 }
 
 #endif

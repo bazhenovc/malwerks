@@ -3,7 +3,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_dds::*;
+// use malwerks_dds::*;
 use malwerks_render::*;
 use malwerks_resources::*;
 
@@ -116,7 +116,7 @@ impl EnvironmentProbes {
         }
         let mut ray_gen_and_miss_modules = Vec::with_capacity(static_scenery.environment_probes.len() * 2);
 
-        let mut shader_groups = Vec::with_capacity(ray_gen_and_miss_modules.len() + closest_hit_modules.len());
+        let mut shader_groups = Vec::with_capacity(2 + closest_hit_modules.len());
         for shader_id in 0..2 {
             shader_groups.push(
                 vk::RayTracingShaderGroupCreateInfoNV::builder()
@@ -140,8 +140,11 @@ impl EnvironmentProbes {
             );
         }
 
-        let entry_point = std::ffi::CString::new("main").unwrap();
-        let mut shader_stages = Vec::with_capacity(shader_groups.len());
+        log::info!("shader groups: {:?}", shader_groups.len());
+
+        // let entry_point = std::ffi::CString::new("main").unwrap();
+        let entry_point = std::ffi::CStr::from_bytes_with_nul(b"main\0").unwrap();
+        let mut shader_stages = Vec::with_capacity(static_scenery.environment_probes.len() * shader_groups.len());
 
         // TODO: ensure these never reallocate
         let mut temp_writes = Vec::with_capacity(descriptor_sets.len());
@@ -284,10 +287,15 @@ impl EnvironmentProbes {
             );
         }
 
+        //log::info!("{:?}", &ray_gen_and_miss_modules);
+        //log::info!("{:?}", &closest_hit_modules);
+        //log::info!("{:?}", &shader_stages);
+        // log::info!("{:?}", &temp_ray_tracing_pipelines);
+
         log::info!("allocating {} ray tracing pipelines", temp_ray_tracing_pipelines.len());
         let ray_tracing_pipelines =
             factory.create_ray_tracing_pipelines_nv(vk::PipelineCache::null(), &temp_ray_tracing_pipelines);
-        let shader_binding_table = ShaderBindingTable::new(static_scenery, ray_tracing_properties, factory);
+        let shader_binding_table = ShaderBindingTable::new(shader_stages.len(), ray_tracing_properties, factory);
 
         factory.update_descriptor_sets(&temp_writes, &[]);
 
@@ -357,16 +365,19 @@ impl EnvironmentProbes {
             let table_stride = self.shader_binding_table.get_table_stride();
 
             let ray_gen_buffer = self.shader_binding_table.get_table_buffer().0;
-            let ray_gen_offset = pipeline_id;
+            let ray_gen_offset = 0;
 
             let ray_miss_buffer = self.shader_binding_table.get_table_buffer().0;
-            let ray_miss_offset = pipeline_id + table_stride;
+            let ray_miss_offset = table_stride;
+            let ray_miss_stride = table_stride;
 
             let ray_hit_buffer = self.shader_binding_table.get_table_buffer().0;
-            let ray_hit_offset = pipeline_id + 2 * table_stride;
+            let ray_hit_offset = 2 * table_stride;
+            let ray_hit_stride = table_stride;
 
             let ray_call_buffer = vk::Buffer::null();
             let ray_call_offset = 0;
+            let ray_call_stride = 0;
 
             command_buffer.reset();
             command_buffer.begin(
@@ -414,13 +425,13 @@ impl EnvironmentProbes {
                 ray_gen_offset as _,
                 ray_miss_buffer,
                 ray_miss_offset as _,
-                table_stride as _,
+                ray_miss_stride as _,
                 ray_hit_buffer,
                 ray_hit_offset as _,
-                table_stride as _,
+                ray_hit_stride as _,
                 ray_call_buffer,
                 ray_call_offset as _,
-                table_stride as _,
+                ray_call_stride as _,
                 image_width,
                 image_height,
                 1,
@@ -506,29 +517,27 @@ impl EnvironmentProbes {
                     .build()],
                 vk::Fence::null(),
             );
+
             queue.wait_idle();
             device.wait_idle();
 
-            let mut scratch_image = ScratchImage::new(
-                image_width,
-                image_height,
-                1,
-                1,
-                1,
-                DXGI_FORMAT_R32G32B32A32_FLOAT,
-                false,
-            );
-
-            let temp_memory = factory.map_allocation_memory(&temp_buffer);
-            unsafe {
-                assert_eq!(scratch_image.as_slice().len(), temp_buffer.1.get_size());
-
-                let dst_slice = scratch_image.as_slice_mut();
-                std::ptr::copy_nonoverlapping(temp_memory, dst_slice.as_mut_ptr(), dst_slice.len());
-            }
-            factory.unmap_allocation_memory(&temp_buffer);
-
-            scratch_image.save_to_file(std::path::Path::new(&format!("light_probe_{}.dds", pipeline_id)));
+            // let mut scratch_image = ScratchImage::new(
+            //     image_width,
+            //     image_height,
+            //     1,
+            //     1,
+            //     1,
+            //     DXGI_FORMAT_R32G32B32A32_FLOAT,
+            //     false,
+            // );
+            // let temp_memory = factory.map_allocation_memory(&temp_buffer);
+            // unsafe {
+            //     assert_eq!(scratch_image.as_slice().len(), temp_buffer.1.get_size());
+            //     let dst_slice = scratch_image.as_slice_mut();
+            //     std::ptr::copy_nonoverlapping(temp_memory, dst_slice.as_mut_ptr(), dst_slice.len());
+            // }
+            // factory.unmap_allocation_memory(&temp_buffer);
+            // scratch_image.save_to_file(std::path::Path::new(&format!("light_probe_{}.dds", pipeline_id)));
         }
 
         factory.deallocate_buffer(&temp_buffer);

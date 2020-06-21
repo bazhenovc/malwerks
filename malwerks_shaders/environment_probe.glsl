@@ -5,6 +5,10 @@
 
 #version 460 core
 
+#ifdef RAY_TRACING
+#extension GL_NV_ray_tracing:enable
+#endif
+
 layout (std140, set = 0, binding = 0) uniform PerFrame {
     mat4 view_projection;
     mat4 inverse_view_projection;
@@ -38,11 +42,9 @@ void main() {
 #endif
 
 #ifdef RAY_GEN_STAGE
-#extension GL_NV_ray_tracing:enable
-
 struct PrimaryRayPayload {
     vec4 color_and_distance;
-    vec4 normal_and_id;
+    // vec4 normal_and_id;
 };
 
 layout (set = 0, binding = 0) uniform accelerationStructureNV TopLevelAccelerationStructure;
@@ -53,16 +55,16 @@ layout (location = 0) rayPayloadNV PrimaryRayPayload PrimaryRay;
 void main() {
     const uint MAX_RECURSION_DEPTH = 4;
     const uint RAY_FLAGS = gl_RayFlagsOpaqueNV;
-    const uint CULL_MASK = 0xff;
+    const uint CULL_MASK = 0xFF;
 
     vec2 pixel_center = vec2(gl_LaunchIDNV) + vec2(0.5);
     vec2 uv = pixel_center / vec2(gl_LaunchIDNV);
     vec2 uv_ndc = uv * 2.0 - vec2(1.0);
     float aspect_ratio = float(gl_LaunchIDNV.x) / float(gl_LaunchIDNV.y);
 
-    vec3 origin = vec3(0.0, -2.0, 0.0);
+    vec3 origin = vec3(0.0, 0.0, 0.0);
     float tmin = 0.0;
-    float tmax = 1.0;
+    float tmax = 9999.0;
     vec3 direction = normalize(vec3(uv_ndc.x * aspect_ratio, -uv_ndc.y, 1.0));
 
     traceNV(
@@ -71,7 +73,7 @@ void main() {
         CULL_MASK,
         0, // sbtRecordOffset
         0, // sbtRecordStride
-        1, // missIndex
+        0, // missIndex
         origin, tmin,
         direction, tmax,
         0 // payload
@@ -82,18 +84,16 @@ void main() {
 #endif
 
 #ifdef RAY_MISS_STAGE
-#extension GL_NV_ray_tracing:enable
-
 struct PrimaryRayPayload {
     vec4 color_and_distance;
-    vec4 normal_and_id;
+    // vec4 normal_and_id;
 };
 
 layout (location = 0) rayPayloadNV PrimaryRayPayload PrimaryRay;
 
 void main()
 {
-    PrimaryRay.color_and_distance = vec4(0.0, 0.0, 0.0, 0.0);
-    PrimaryRay.normal_and_id = vec4(1.0, 0.0, 0.0, intBitsToFloat(0));
+    PrimaryRay.color_and_distance = vec4(0.5, 0.5, 0.5, 0.5);
+    // PrimaryRay.normal_and_id = vec4(1.0, 0.0, 0.0, intBitsToFloat(0));
 }
 #endif

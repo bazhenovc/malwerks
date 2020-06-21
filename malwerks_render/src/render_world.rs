@@ -195,13 +195,13 @@ impl RenderWorld {
         instance_mask: u32,
         shader_binding_table_offset: u32,
         flags: vk::GeometryInstanceFlagsNV,
-        acceleration_structure_reference: u64,
+        bottom_level_acceleration_structure: &[u64],
     ) -> Vec<vk::AccelerationStructureInstanceNV> {
         self.static_scenery.create_instances_nv(
             instance_mask,
             shader_binding_table_offset,
             flags,
-            acceleration_structure_reference,
+            bottom_level_acceleration_structure,
         )
     }
 

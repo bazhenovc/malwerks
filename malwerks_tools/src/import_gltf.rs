@@ -486,6 +486,7 @@ fn generate_material<'a>(
         let mut ray_closest_hit_options = compile_options
             .clone()
             .expect("failed to clone ray closest hit options");
+        ray_closest_hit_options.add_macro_definition("RAY_TRACING", None);
         ray_closest_hit_options.add_macro_definition("RAY_CLOSEST_HIT_STAGE", None);
 
         let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
@@ -735,9 +736,11 @@ fn import_probes(static_scenery: &mut DiskStaticScenery, base_path: &std::path::
     let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
     fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
 
-    let mut ray_gen_options = compile_options.clone().expect("failed to clone ray gen options");
+    let mut ray_tracing_options = compile_options.clone().expect("failed to clone ray tracing options");
+    ray_tracing_options.add_macro_definition("RAY_TRACING", None);
+    let mut ray_gen_options = ray_tracing_options.clone().expect("failed to clone ray gen options");
     ray_gen_options.add_macro_definition("RAY_GEN_STAGE", None);
-    let mut ray_miss_options = compile_options.clone().expect("failed to clone ray miss options");
+    let mut ray_miss_options = ray_tracing_options.clone().expect("failed to clone ray miss options");
     ray_miss_options.add_macro_definition("RAY_MISS_STAGE", None);
 
     let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
