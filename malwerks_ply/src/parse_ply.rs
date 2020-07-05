@@ -152,32 +152,46 @@ where
             // Now I have to iterate over the entire data twice.
             // This is at least 5 times slower compared to regular properties.
 
-            let mut per_element_offsets = Vec::new();
-            per_element_offsets.resize(element.element_count, 0);
-
             let mut temporary_bytes = [0u8; 8];
+            let mut temporary_rle_element_stride = 0;
             let data_start = buf_reader.seek(std::io::SeekFrom::Current(0))?;
 
+            let mut rle_elements_capacity = 0;
             let mut element_buffer_size = 0;
             for _element_id in 0..element.element_count {
+                let mut element_stride = 0;
                 for property in element.properties.iter() {
                     if let Some(list_index_type) = property.list_index_type {
-                        let property_stride = property.property_type.stride();
+                        let property_base_stride = property.property_type.stride();
                         let list_index_stride = list_index_type.stride();
 
                         buf_reader.read_exact(&mut temporary_bytes[0..list_index_stride])?;
 
-                        let element_stride = list_index_type.bytes_to_usize(&temporary_bytes) * property_stride;
-                        buf_reader.seek(std::io::SeekFrom::Current(element_stride as _))?;
+                        let property_payload_stride =
+                            list_index_type.bytes_to_usize(&temporary_bytes) * property_base_stride;
+                        buf_reader.seek(std::io::SeekFrom::Current(property_payload_stride as _))?;
 
-                        element_buffer_size += element_stride + list_index_stride;
+                        let property_stride = property_payload_stride + list_index_stride;
+                        element_stride += property_stride;
                     } else {
-                        let element_stride = property.property_type.stride();
-                        element_buffer_size += element_stride;
-                        buf_reader.seek(std::io::SeekFrom::Current(element_stride as _))?;
+                        let property_payload_stride = property.property_type.stride();
+                        element_stride += property_payload_stride;
+                        buf_reader.seek(std::io::SeekFrom::Current(property_payload_stride as _))?;
                     }
                 }
+
+                element_buffer_size += element_stride;
+
+                if element_stride != temporary_rle_element_stride {
+                    temporary_rle_element_stride = element_stride;
+                    rle_elements_capacity += 1;
+                }
             }
+
+            let mut rle_element_offsets = rle_vec::RleVec::with_capacity(rle_elements_capacity);
+            let mut rle_data_offset = 0;
+            let mut rle_previous_item_count = 0;
+            let mut rle_element_stride = 0;
 
             let mut element_data = Vec::new();
             element_data.resize(element_buffer_size, 0u8);
@@ -186,34 +200,47 @@ where
 
             let mut element_data_start = 0;
             for element_id in 0..element.element_count {
-                per_element_offsets[element_id] = element_data_start;
+                let mut element_stride = 0;
                 for property in element.properties.iter() {
                     if let Some(list_index_type) = property.list_index_type {
-                        let property_stride = property.property_type.stride();
+                        let property_base_stride = property.property_type.stride();
                         let list_index_stride = list_index_type.stride();
 
                         let list_index_slice =
                             &mut element_data[element_data_start..element_data_start + list_index_stride];
                         buf_reader.read_exact(list_index_slice)?;
 
-                        let element_stride = list_index_type.bytes_to_usize(&list_index_slice) * property_stride;
+                        let property_payload_stride =
+                            list_index_type.bytes_to_usize(&list_index_slice) * property_base_stride;
                         element_data_start += list_index_stride;
-                        buf_reader
-                            .read_exact(&mut element_data[element_data_start..element_data_start + element_stride])?;
+                        buf_reader.read_exact(
+                            &mut element_data[element_data_start..element_data_start + property_payload_stride],
+                        )?;
 
-                        element_data_start += element_stride;
+                        element_data_start += property_payload_stride;
+                        element_stride += property_payload_stride + list_index_stride;
                     } else {
-                        let element_stride = property.property_type.stride();
-                        buf_reader
-                            .read_exact(&mut element_data[element_data_start..element_data_start + element_stride])?;
+                        let property_payload_stride = property.property_type.stride();
+                        buf_reader.read_exact(
+                            &mut element_data[element_data_start..element_data_start + property_payload_stride],
+                        )?;
 
-                        element_data_start += element_stride;
+                        element_data_start += property_payload_stride;
+                        element_stride += property_payload_stride;
                     }
                 }
+
+                if element_stride != temporary_rle_element_stride {
+                    rle_data_offset += element_data_start;
+                    rle_previous_item_count += element_id;
+                    rle_element_stride = element_stride;
+                }
+
+                rle_element_offsets.push((rle_data_offset, rle_previous_item_count, rle_element_stride));
             }
 
-            ply_elements_data.push(PlyElementData::Structured(PlyStructuredData {
-                per_element_offsets,
+            ply_elements_data.push(PlyElementData::RleStructured(PlyRleStructuredData {
+                rle_element_offsets,
                 element_data,
             }));
         } else {

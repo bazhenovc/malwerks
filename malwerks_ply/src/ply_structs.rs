@@ -107,9 +107,15 @@ pub struct PlyStructuredData {
     pub(crate) element_data: Vec<u8>,
 }
 
+pub struct PlyRleStructuredData {
+    pub(crate) rle_element_offsets: rle_vec::RleVec<(usize, usize, usize)>,
+    pub(crate) element_data: Vec<u8>,
+}
+
 pub enum PlyElementData {
     Linear(PlyLinearData),
     Structured(PlyStructuredData),
+    RleStructured(PlyRleStructuredData),
 }
 
 pub trait PlyElementAccess: bytemuck::Pod {
@@ -132,7 +138,12 @@ impl PlyData {
                 PlyElementData::Structured(structured_data) => {
                     std::mem::size_of_val(&structured_data.per_element_offsets[0])
                         * structured_data.per_element_offsets.len()
-                        + structured_data.element_data.len()
+                }
+
+                PlyElementData::RleStructured(rle_structured_data) => {
+                    std::mem::size_of_val(&rle_structured_data.rle_element_offsets[0])
+                        * rle_structured_data.rle_element_offsets.runs_len()
+                        + rle_structured_data.element_data.len()
                 }
             };
         }
@@ -153,6 +164,7 @@ impl PlyData {
 
             PlyElementData::Structured(structured_data) => {
                 let data_start = structured_data.per_element_offsets[element_index];
+
                 for (property_index, property) in element_header.properties.iter().enumerate() {
                     if let Some(list_index_type) = property.list_index_type {
                         let property_stride = property.property_type.stride();
@@ -172,6 +184,34 @@ impl PlyData {
                             property_index,
                             0,
                             &structured_data.element_data[data_start..data_start + element_stride],
+                        );
+                    }
+                }
+            }
+
+            PlyElementData::RleStructured(rle_structured_data) => {
+                let rle_offset = rle_structured_data.rle_element_offsets[element_index];
+                let data_start = rle_offset.0 + (element_index - rle_offset.1) * rle_offset.2;
+
+                for (property_index, property) in element_header.properties.iter().enumerate() {
+                    if let Some(list_index_type) = property.list_index_type {
+                        let property_stride = property.property_type.stride();
+                        let list_index_stride = list_index_type.stride();
+
+                        let element_count = list_index_type
+                            .bytes_to_usize(&rle_structured_data.element_data[data_start..data_start + list_index_stride]);
+
+                        out_element.set_member_from_bytes(
+                            property_index,
+                            element_count,
+                            &rle_structured_data.element_data[data_start..data_start + element_count * property_stride],
+                        );
+                    } else {
+                        let element_stride = property.property_type.stride();
+                        out_element.set_member_from_bytes(
+                            property_index,
+                            0,
+                            &rle_structured_data.element_data[data_start..data_start + element_stride],
                         );
                     }
                 }

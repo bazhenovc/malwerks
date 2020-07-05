@@ -8,11 +8,13 @@ edition = "2018"
 malwerks_dds = { path = "../malwerks_dds" }
 malwerks_ply = { path = "../malwerks_ply" }
 malwerks_resources = { path = "../malwerks_resources" }
+
 serde = "*"
 ash = "*"
 bincode = "*"
 log = "*"
 pretty_env_logger = "*"
+logging_timer = "*"
 gltf = "*"
 shaderc = "*"
 ultraviolet = "*"
@@ -34,3 +36,7 @@ path = "src/convert_probe.rs"
 # [[bin]]
 # name = "bake_lightmaps"
 # path = "src/bake_lightmaps.rs"
+
+[[bin]]
+name = "import_ply"
+path = "src/import_ply.rs"
