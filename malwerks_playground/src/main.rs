@@ -168,8 +168,8 @@ impl Game {
             &mut factory,
         );
 
-        let ray_tracing_properties = device.get_ray_tracing_properties_nv();
-        log::info!("{:?}", &ray_tracing_properties);
+        // let ray_tracing_properties = device.get_ray_tracing_properties_nv();
+        // log::info!("{:?}", &ray_tracing_properties);
 
         // let mut acceleration_structure = AccelerationStructure::new(&render_world, &mut factory);
         // acceleration_structure.build(&mut temporary_command_buffer.command_buffer, &mut factory, &mut queue);
