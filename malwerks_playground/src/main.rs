@@ -56,7 +56,6 @@ struct Game {
 
     input_map: input_map::InputMap,
     camera_state: camera_state::CameraState,
-
     // acceleration_structure: AccelerationStructure,
     // environment_probes: EnvironmentProbes,
 }
@@ -233,7 +232,6 @@ impl Game {
                 width: RENDER_WIDTH,
                 height: RENDER_HEIGHT,
             }),
-
             // acceleration_structure,
             // environment_probes,
         }

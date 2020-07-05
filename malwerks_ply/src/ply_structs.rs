@@ -198,8 +198,9 @@ impl PlyData {
                         let property_stride = property.property_type.stride();
                         let list_index_stride = list_index_type.stride();
 
-                        let element_count = list_index_type
-                            .bytes_to_usize(&rle_structured_data.element_data[data_start..data_start + list_index_stride]);
+                        let element_count = list_index_type.bytes_to_usize(
+                            &rle_structured_data.element_data[data_start..data_start + list_index_stride],
+                        );
 
                         out_element.set_member_from_bytes(
                             property_index,

@@ -25,7 +25,11 @@ impl ShaderBindingTable {
         let table_buffer = factory.allocate_buffer(
             &vk::BufferCreateInfo::builder()
                 .size(table_size as _)
-                .usage(vk::BufferUsageFlags::RAY_TRACING_NV | vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST)
+                .usage(
+                    vk::BufferUsageFlags::RAY_TRACING_NV
+                        | vk::BufferUsageFlags::TRANSFER_SRC
+                        | vk::BufferUsageFlags::TRANSFER_DST,
+                )
                 .build(),
             &vk_mem::AllocationCreateInfo {
                 usage: vk_mem::MemoryUsage::GpuOnly,
