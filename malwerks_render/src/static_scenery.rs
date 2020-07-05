@@ -617,7 +617,6 @@ impl StaticScenery {
                 vk::PipelineRasterizationStateCreateInfo::builder()
                     .line_width(1.0)
                     .cull_mode(vk::CullModeFlags::BACK)
-                    //.rasterizer_discard_enable(disk_material.fragment_alpha_discard)
                     .build(),
             );
             temp_multisample_states.push(

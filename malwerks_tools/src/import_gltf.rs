@@ -428,14 +428,14 @@ fn generate_material<'a>(
     texture_prelude!(shader_prelude, images, material.occlusion_texture(), "OcclusionTexture");
     texture_prelude!(shader_prelude, images, material.emissive_texture(), "EmissiveTexture");
 
-    //let has_alpha_test = match material.alpha_mode() {
-    //    gltf::json::material::AlphaMode::Opaque => false,
-    //    gltf::json::material::AlphaMode::Mask => {
-    //        shader_prelude.push_str("#define HAS_AlphaDiscard\n");
-    //        true
-    //    }
-    //    gltf::json::material::AlphaMode::Blend => false,
-    //};
+    let has_alpha_test = match material.alpha_mode() {
+        gltf::json::material::AlphaMode::Opaque => false,
+        gltf::json::material::AlphaMode::Mask => {
+            shader_prelude.push_str("#define HAS_AlphaDiscard\n");
+            true
+        }
+        gltf::json::material::AlphaMode::Blend => false,
+    };
 
     shader_prelude.push_str("#endif\n");
 
@@ -531,7 +531,7 @@ fn generate_material<'a>(
                 .collect(),
             vertex_stage: Vec::from(vertex_stage.as_binary()),
             fragment_stage: Vec::from(fragment_stage.as_binary()),
-            //fragment_alpha_discard: has_alpha_test,
+            fragment_alpha_discard: has_alpha_test,
             ray_closest_hit_stage: Vec::from(ray_closest_hit_stage.as_binary()),
         });
 

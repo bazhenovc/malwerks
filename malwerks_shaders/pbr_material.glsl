@@ -48,9 +48,9 @@ vec4 sample_base_color() {
     #ifdef HAS_BaseColorTexture
         vec4 color_sample = texture(BaseColorTexture, BaseColorTexture_UV) * base_color_factor;
         #ifdef HAS_AlphaDiscard
-            //if (color_sample.a < metallic_roughness_discard_unused.z) {
-            //    discard;
-            //}
+            if (color_sample.a < metallic_roughness_discard_unused.z) {
+                discard;
+            }
         #endif
         return color_sample;
     #else
@@ -196,7 +196,7 @@ hitAttributeNV vec3 HitAttributes;
 
 void main() {
     vec3 barycentrics = vec3(1.0 - HitAttributes.x - HitAttributes.y, HitAttributes.x, HitAttributes.y);
-    PrimaryRay.color_and_distance = vec4(barycentrics * factor, gl_HitTNV);
+    PrimaryRay.color_and_distance = vec4(barycentrics, gl_HitTNV);
     // PrimaryRay.normal_and_id = vec4(0.0, 0.0, 1.0, intBitsToFloat(0));
 }
 
