@@ -616,7 +616,7 @@ impl StaticScenery {
             temp_rasterization_states.push(
                 vk::PipelineRasterizationStateCreateInfo::builder()
                     .line_width(1.0)
-                    .cull_mode(vk::CullModeFlags::BACK)
+                    .cull_mode(vk::CullModeFlags::from_raw(disk_material.fragment_cull_flags))
                     .build(),
             );
             temp_multisample_states.push(

@@ -55,7 +55,8 @@ pub struct DiskMaterial {
     pub vertex_format: Vec<(i32, u32, usize)>, // vk::Format pretending to be i32, location, offset
     pub vertex_stage: Vec<u32>,
     pub fragment_stage: Vec<u32>,
-    pub fragment_alpha_discard: bool,
+    pub fragment_alpha_test: bool,
+    pub fragment_cull_flags: u32, // vk::CullModeFlags pretending to be u32
     pub ray_closest_hit_stage: Vec<u32>,
 }
 
