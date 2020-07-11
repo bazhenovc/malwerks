@@ -20,6 +20,8 @@ shaderc = "*"
 ultraviolet = "*"
 rayon = "*"
 indicatif = "*"
+image = "*"
+clap = "*"
 
 [[bin]]
 name = "import_gltf"
@@ -32,6 +34,10 @@ path = "src/precompute_brdf.rs"
 [[bin]]
 name = "convert_probe"
 path = "src/convert_probe.rs"
+
+[[bin]]
+name = "convert_metallic_roughness"
+path = "src/convert_metallic_roughness.rs"
 
 # [[bin]]
 # name = "bake_lightmaps"
