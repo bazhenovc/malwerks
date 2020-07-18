@@ -264,7 +264,7 @@ impl Game {
         // );
 
         let time_now = std::time::Instant::now();
-        let time_delta = time_now - self.frame_time;
+        let time_delta = (time_now - self.frame_time).as_secs_f32();
         self.frame_time = time_now;
 
         let frame_context = self.device.begin_frame();
@@ -287,7 +287,7 @@ impl Game {
         );
 
         // render world
-        self.camera_state.update(time_delta.as_secs_f32());
+        self.camera_state.update(time_delta);
         self.render_world.render(
             self.camera_state.get_camera(),
             &frame_context,
@@ -311,14 +311,23 @@ impl Game {
 
         // process imgui
         let io = self.imgui.io_mut();
-        io.delta_time = time_delta.as_secs_f32();
+        io.delta_time = time_delta;
+        let average_delta = io.framerate;
 
         self.imgui_platform.prepare_frame(io, window).unwrap();
 
         let ui = self.imgui.frame();
         self.imgui_platform.prepare_render(&ui, window);
         {
-            debug_ui::show_debug_window(&ui, &window, &gilrs, &mut self.camera_state, &mut self.render_world);
+            debug_ui::show_debug_window(
+                &ui,
+                &window,
+                &gilrs,
+                &mut self.camera_state,
+                &mut self.render_world,
+                1000.0 / average_delta,
+                average_delta,
+            );
 
             //let mut demo_window_open = true;
             //ui.show_demo_window(&mut demo_window_open);

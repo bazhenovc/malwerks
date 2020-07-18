@@ -22,6 +22,7 @@ rayon = "*"
 indicatif = "*"
 image = "*"
 clap = "*"
+bytemuck = "*"
 
 [[bin]]
 name = "import_gltf"

@@ -297,7 +297,7 @@ fn render_test_frame(
         difference_image.save_to_file(&difference_path);
 
         log::info!("absolute difference: {}", absolute_difference);
-        assert_eq!(absolute_difference, 0.0);
+        assert!(absolute_difference <= 0.1, "Absolute difference higher than allowed");
     }
 }
 
