@@ -5,5 +5,4 @@ authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-serde = { version = "*", features = ["derive"] }
-bincode = "*"
+bytemuck = "*"

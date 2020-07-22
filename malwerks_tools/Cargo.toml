@@ -9,9 +9,7 @@ malwerks_dds = { path = "../malwerks_dds" }
 malwerks_ply = { path = "../malwerks_ply" }
 malwerks_resources = { path = "../malwerks_resources" }
 
-serde = "*"
 ash = "*"
-bincode = "*"
 log = "*"
 pretty_env_logger = "*"
 logging_timer = "*"

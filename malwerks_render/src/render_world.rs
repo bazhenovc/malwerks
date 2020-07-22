@@ -32,18 +32,11 @@ impl RenderWorld {
     ) -> Self {
         log::info!("loading world: {:?}", &world_path);
 
-        let encoded = {
-            use std::io::Read;
-            let mut file = std::fs::OpenOptions::new()
-                .read(true)
-                .open(world_path)
-                .expect("failed to open world file");
-
-            let mut encoded = Vec::new();
-            file.read_to_end(&mut encoded).expect("failed to read world file");
-            encoded
-        };
-        let static_scenery = bincode::deserialize(&encoded).expect("failed to deserialize world file");
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .open(world_path)
+            .expect("failed to open world file");
+        let static_scenery = DiskStaticScenery::deserialize_from(file);
 
         Self::from_disk(&static_scenery, render_size, command_buffer, device, factory, queue)
     }

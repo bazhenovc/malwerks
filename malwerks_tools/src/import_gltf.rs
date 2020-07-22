@@ -3,6 +3,9 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+#[macro_use]
+extern crate clap;
+
 use malwerks_resources::*;
 
 use ash::vk;
@@ -822,9 +825,9 @@ fn import_samplers(static_scenery: &mut DiskStaticScenery, samplers: gltf::iter:
             mag_filter: vk::Filter::LINEAR.as_raw(),
             min_filter: vk::Filter::LINEAR.as_raw(),
             mipmap_mode: vk::SamplerMipmapMode::LINEAR.as_raw(),
-            address_mode_u: vk::SamplerAddressMode::CLAMP_TO_EDGE.as_raw(),
-            address_mode_v: vk::SamplerAddressMode::CLAMP_TO_EDGE.as_raw(),
-            address_mode_w: vk::SamplerAddressMode::CLAMP_TO_EDGE.as_raw(),
+            address_mode_u: vk::SamplerAddressMode::REPEAT.as_raw(),
+            address_mode_v: vk::SamplerAddressMode::REPEAT.as_raw(),
+            address_mode_w: vk::SamplerAddressMode::REPEAT.as_raw(),
         });
     } else {
         static_scenery.samplers.reserve_exact(samplers.len());
@@ -918,13 +921,15 @@ fn import_material_instances(static_scenery: &mut DiskStaticScenery, materials: 
         };
 
         #[repr(C)]
-        #[derive(serde::Serialize)]
+        #[derive(Copy, Clone)]
         struct PackedMaterialData {
             base_color_factor: [f32; 4],
             metallic_roughness_discard_unused: [f32; 4],
             emissive_rgb_unused: [f32; 4],
             unused: [f32; 4],
         };
+        unsafe impl bytemuck::Zeroable for PackedMaterialData {}
+        unsafe impl bytemuck::Pod for PackedMaterialData {}
         assert_eq!(std::mem::size_of::<PackedMaterialData>(), 64);
 
         let packed_data = PackedMaterialData {
@@ -943,7 +948,7 @@ fn import_material_instances(static_scenery: &mut DiskStaticScenery, materials: 
             ],
             unused: [0.0f32; 4],
         };
-        let material_data = bincode::serialize(&packed_data).expect("failed to serialize material instance data");
+        let material_data = bytemuck::bytes_of(&packed_data).to_vec();
         assert_eq!(material_data.len(), 64);
 
         static_scenery.material_instances.push(DiskMaterialInstance {
@@ -1018,10 +1023,30 @@ fn main() {
 
     pretty_env_logger::init();
 
-    let args: Vec<String> = std::env::args().collect();
-    let static_scenery = import_gltf(&args[1]);
+    let matches = clap::clap_app!(app =>
+        (version: "0.1")
+        (author: "Kyrylo Bazhenov <bazhenovc@gmail.com>")
+        (about: "Converts a gltf scene into internal representation")
+        (@arg INPUT_FILE: -i --input +takes_value +required "Sets input file to load")
+        (@arg OUTPUT_FILE: -o --output +takes_value "Sets output file")
+        (@arg COMPRESSION_LEVEL: -c --compression_level +takes_value "Sets the compression level for the output file"))
+    .get_matches();
 
-    let out_path = std::path::Path::new(&args[1]).with_extension("world");
+    let input_file = matches.value_of("INPUT_FILE").expect("no input file specified");
+    let output_file = if let Some(file) = matches.value_of("OUTPUT_FILE") {
+        std::path::PathBuf::from(file)
+    } else {
+        std::path::Path::new(&input_file).with_extension("world")
+    };
+    let compression_level = if let Some(level) = matches.value_of("COMPRESSION_LEVEL") {
+        level
+            .parse()
+            .expect("compression level does not seem to be a valid number")
+    } else {
+        9
+    };
+
+    let static_scenery = import_gltf(&input_file);
     log::info!(
         "saving {} buffers, {} meshes, {} images, {} samplers, {} layouts, {} instances, {} materials, {} buckets to {:?}",
         static_scenery.buffers.len(),
@@ -1032,18 +1057,15 @@ fn main() {
         static_scenery.material_instances.len(),
         static_scenery.materials.len(),
         static_scenery.buckets.len(),
-        &out_path,
+        &output_file,
     );
-
-    let encoded = bincode::serialize(&static_scenery).expect("failed to serialize static scenery");
     {
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
+        let file = std::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
-            .open(out_path)
+            .open(output_file)
             .expect("failed to open output file");
-        file.write_all(&encoded[..]).expect("failed to write serialized data");
+        static_scenery.serialize_into(std::io::BufWriter::new(file), compression_level);
     }
 }

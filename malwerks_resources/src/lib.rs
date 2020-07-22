@@ -3,6 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+mod resource_compression;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -26,14 +28,9 @@ pub struct DiskImage {
     pub image_type: i32, // vk::ImageType pretending to be i32
     pub view_type: i32,  // vk::ImageViewType pretending to be i32
     pub format: i32,     // vk::Format pretending to be i32
-    pub pixels: Vec<u8>,
-}
 
-#[derive(Serialize, Deserialize)]
-pub struct DiskShader {
-    pub name: String,
-    pub bytecode: Vec<u8>,
-    pub enabled_features: String, // Semicolon-separated list of values
+    #[serde(with = "resource_compression")]
+    pub pixels: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -62,9 +59,11 @@ pub struct DiskMaterial {
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskBuffer {
-    pub data: Vec<u8>,
     pub stride: u64,
     pub usage_flags: u32, // vk::BufferUsageFlags pretending to be i32
+
+    #[serde(with = "resource_compression")]
+    pub data: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -120,4 +119,20 @@ pub struct DiskStaticScenery {
 
     // TODO: make this less specific
     pub environment_probes: Vec<DiskEnvironmentProbe>,
+}
+
+impl DiskStaticScenery {
+    pub fn serialize_into<W>(&self, writer: W, _compression_level: u32)
+    where
+        W: std::io::Write,
+    {
+        bincode::serialize_into(writer, self).expect("failed to serialize static scenery");
+    }
+
+    pub fn deserialize_from<R>(reader: R) -> DiskStaticScenery
+    where
+        R: std::io::Read,
+    {
+        bincode::deserialize_from(reader).expect("failed to deserialize static scenery")
+    }
 }

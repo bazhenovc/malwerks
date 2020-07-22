@@ -8,8 +8,6 @@ edition = "2018"
 malwerks_vk = { path = "../malwerks_vk" }
 malwerks_resources = { path = "../malwerks_resources" }
 log = "*"
-serde = { version = "*", features = ["derive"] }
-bincode = "*"
 ultraviolet = "*"
 rayon = "*"
 

@@ -20,19 +20,19 @@ impl ScratchImage {
 
         let mut dds_file = std::fs::File::open(path).expect("failed to open dds file");
         let dds_header = {
-            let mut header_data = [0u8; 148];
+            let mut header_bytes = [0u8; 148];
             dds_file
-                .read_exact(&mut header_data)
+                .read_exact(&mut header_bytes)
                 .expect("failed to read dds header");
 
-            let header: DirectDrawHeader =
-                bincode::deserialize(&header_data[..]).expect("failed to deserialize dds header");
+            let header: &DirectDrawHeader = bytemuck::from_bytes(&header_bytes);
+
             assert_eq!(&header.magic, b"DDS ");
             assert_eq!(header.size, 124);
             assert_eq!(header.pixel_format.size, 32);
             assert_eq!(&header.pixel_format.four_cc, b"DX10");
 
-            header
+            *header
         };
         let dds_data = {
             let mut buffer = Vec::new();
@@ -172,7 +172,7 @@ impl ScratchImage {
     }
 
     pub fn save_to_file(&self, path: &std::path::Path) {
-        let header = bincode::serialize(&self.dds_header).expect("failed to serialize dds header");
+        let header = bytemuck::bytes_of(&self.dds_header);
 
         use std::io::Write;
         let mut file = std::fs::OpenOptions::new()

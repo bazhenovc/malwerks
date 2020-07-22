@@ -140,19 +140,8 @@ impl Game {
         imgui.set_ini_filename(None);
 
         log::info!("loading world: {:?}", world_path);
-        let static_scenery = {
-            use std::io::Read;
-            let mut file = std::fs::OpenOptions::new()
-                .read(true)
-                .open(world_path)
-                .expect("failed to open world file");
-
-            let mut encoded = Vec::new();
-            file.read_to_end(&mut encoded).expect("failed to read world file");
-            bincode::deserialize(&encoded).expect("failed to deserialize world file")
-        };
-        let render_world = RenderWorld::from_disk(
-            &static_scenery,
+        let render_world = RenderWorld::from_file(
+            &world_path,
             (RENDER_WIDTH, RENDER_HEIGHT),
             &mut temporary_command_buffer.command_buffer,
             &device,
@@ -407,6 +396,10 @@ fn main() {
                 }
 
                 game.process_events();
+                window.request_redraw();
+            }
+
+            Event::RedrawRequested(_) => {
                 game.draw_and_present(&window, &gilrs);
             }
 
