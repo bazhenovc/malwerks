@@ -352,6 +352,8 @@ fn generate_material<'a>(
     //    "layout (location = {}) in mat3 NormalTransform;\n",
     //    last_attribute_location + 5,
     //));
+    shader_prelude.push_str("vec3 transform_direction(vec3 v, mat3 m)\n");
+    shader_prelude.push_str("{ return normalize(m * (v / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2])))); }\n");
     shader_prelude.push_str("vec4 generated_vertex_shader() {\n");
     shader_prelude.push_str("    mat4 normal_transform = transpose(inverse(WorldTransform));\n");
     for attribute in attributes {
@@ -362,14 +364,12 @@ fn generate_material<'a>(
             )),
 
             gltf::mesh::Semantic::Normals => shader_prelude.push_str(&format!(
-                //"    VS_{0} = normalize(mat3(WorldTransform) * IN_{0});\n",
-                "    VS_{0} = normalize(mat3(normal_transform) * IN_{0});\n",
+                "    VS_{0} = transform_direction(IN_{0}, mat3(WorldTransform));\n",
                 attribute.semantic_name
             )),
 
             gltf::mesh::Semantic::Tangents => shader_prelude.push_str(&format!(
                 "    VS_{0} = vec4(normalize(mat3(WorldTransform) * IN_{0}.xyz), IN_{0}.w);\n",
-                //"    VS_{0} = WorldTransform * IN_{0};\n",
                 attribute.semantic_name
             )),
 
