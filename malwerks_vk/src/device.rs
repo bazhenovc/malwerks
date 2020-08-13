@@ -223,10 +223,19 @@ impl Device {
                 .queue_priorities(&queue_priorities)
                 .build()];
 
-            let mut device_extension_names = Vec::with_capacity(5);
+            let mut device_extension_names = Vec::with_capacity(6);
+
+            // TODO: enable uint8 index format when AMD starts supporting it
+            // device_extension_names.push(vk::ExtIndexTypeUint8Fn::name().as_ptr());
+
             if let SurfaceMode::WindowSurface(_) = surface_mode {
                 device_extension_names.push(ash::extensions::khr::Swapchain::name().as_ptr());
             }
+
+            // TODO: enable uint8 index format when AMD starts supporting it
+            // let mut uint8_indexing = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::builder()
+            //     .index_type_uint8(true)
+            //     .build();
 
             let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
                 .descriptor_binding_variable_descriptor_count(true)
@@ -240,6 +249,9 @@ impl Device {
             let mut device_create_info = vk::DeviceCreateInfo::builder()
                 .queue_create_infos(&queue_create_info)
                 .push_next(&mut enabled_device_features);
+
+                // TODO: enable uint8 index format when AMD starts supporting it
+                // .push_next(&mut uint8_indexing);
 
             if options.enable_ray_tracing_nv {
                 device_extension_names.push(vk::KhrGetMemoryRequirements2Fn::name().as_ptr());

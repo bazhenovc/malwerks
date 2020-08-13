@@ -13,7 +13,6 @@ ash = "*"
 log = "*"
 pretty_env_logger = "*"
 logging_timer = "*"
-gltf = "*"
 shaderc = "*"
 ultraviolet = "*"
 rayon = "*"
@@ -21,6 +20,12 @@ indicatif = "*"
 image = "*"
 clap = "*"
 bytemuck = "*"
+meshopt = "*"
+
+[dependencies.gltf]
+version = "*"
+default-features = false
+features = ["names"]
 
 [[bin]]
 name = "import_gltf"
