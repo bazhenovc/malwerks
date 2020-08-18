@@ -282,11 +282,10 @@ impl DeviceFactory {
         query_count: u32,
         data: &mut [T],
         flags: vk::QueryResultFlags,
-    ) {
+    ) -> Result<(), vk::Result> {
         unsafe {
             self.device
                 .get_query_pool_results(query_pool, first_query, query_count, data, flags)
-                .unwrap();
         }
     }
 

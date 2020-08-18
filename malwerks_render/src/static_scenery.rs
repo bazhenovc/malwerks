@@ -96,10 +96,14 @@ impl StaticScenery {
         frame_context: &FrameContext,
         shared_frame_data: &SharedFrameData,
     ) {
+        puffin::profile_function!();
+
         // TODO: only one environment probe is supported right now
         assert_eq!(self.environment_probes.descriptor_sets.len(), 1);
 
         for bucket in &self.buckets {
+            puffin::profile_scope!("render bucket");
+
             let pipeline_layout = self.pipeline_layouts[bucket.material];
             let pipeline = self.pipelines[bucket.material];
 

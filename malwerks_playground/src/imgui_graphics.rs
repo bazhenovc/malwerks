@@ -281,7 +281,7 @@ impl ImguiGraphics {
         command_buffer: &mut CommandBuffer,
         draw_data: &imgui::DrawData,
     ) {
-        microprofile::scope!("imgui_draw", "total", 0);
+        puffin::profile_function!();
 
         let width = draw_data.display_size[0];
         let height = draw_data.display_size[1];
@@ -320,7 +320,7 @@ impl ImguiGraphics {
 
         self.buffer_set.acquire_frame(frame_context, factory);
         for draw_list in draw_data.draw_lists() {
-            microprofile::scope!("draw_and_present", "draw_list", 0);
+            puffin::profile_scope!("imgui_draw_list");
 
             let vertex_buffer = self.buffer_set.create_buffer(
                 frame_context,
@@ -454,6 +454,8 @@ impl BufferSet {
     }
 
     pub fn acquire_frame(&mut self, frame_context: &FrameContext, factory: &mut DeviceFactory) {
+        puffin::profile_function!();
+
         let vertex_buffers = self.vertex_buffers.get_mut(frame_context);
         for buffer in vertex_buffers.iter() {
             factory.deallocate_buffer(buffer);
@@ -474,6 +476,8 @@ impl BufferSet {
         usage: vk::BufferUsageFlags,
         data: &[T],
     ) -> vk::Buffer {
+        puffin::profile_function!();
+
         let buffer = factory.allocate_buffer(
             &vk::BufferCreateInfo::builder()
                 .size((data.len() * std::mem::size_of::<T>()) as _)

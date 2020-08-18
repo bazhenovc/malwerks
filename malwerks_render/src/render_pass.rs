@@ -26,6 +26,8 @@ pub trait RenderPass {
 
     fn add_wait_condition(&mut self, semaphore: vk::Semaphore, stage_mask: vk::PipelineStageFlags);
 
+    fn try_get_oldest_timestamp(&self, frame_context: &FrameContext, factory: &mut DeviceFactory) -> Option<[u64; 2]>;
+
     fn destroy(&mut self, factory: &mut DeviceFactory);
 
     fn add_dependency<T>(&mut self, frame_context: &FrameContext, pass: &T, stage_mask: vk::PipelineStageFlags)
@@ -83,6 +85,15 @@ macro_rules! default_render_pass_impl {
                 self.$proxy_member.add_wait_condition(semaphore, stage_mask);
             }
 
+            fn try_get_oldest_timestamp(
+                &self,
+                frame_context: &FrameContext,
+                factory: &mut DeviceFactory,
+            ) -> Option<[u64; 2]> {
+                self.$proxy_member
+                    .try_get_oldest_timestamp(frame_context, factory)
+            }
+
             fn destroy(&mut self, factory: &mut DeviceFactory) {
                 self.$proxy_member.destroy(factory);
                 self.destroy_internal(factory);
@@ -101,6 +112,7 @@ pub struct BaseRenderPass {
     wait_semaphores: Vec<vk::Semaphore>,
     wait_stage_mask: Vec<vk::PipelineStageFlags>,
     clear_values: Vec<vk::ClearValue>,
+    timestamp_query_pool: vk::QueryPool,
 }
 
 impl BaseRenderPass {
@@ -137,6 +149,13 @@ impl BaseRenderPass {
             )
         });
 
+        let timestamp_query_pool = factory.create_query_pool(
+            &vk::QueryPoolCreateInfo::builder()
+                .query_type(vk::QueryType::TIMESTAMP)
+                .query_count((2 * NUM_BUFFERED_GPU_FRAMES) as _)
+                .build(),
+        );
+
         Self {
             render_pass,
             framebuffer,
@@ -147,6 +166,7 @@ impl BaseRenderPass {
             wait_semaphores: Vec::new(),
             wait_stage_mask: Vec::new(),
             clear_values,
+            timestamp_query_pool,
         }
     }
 }
@@ -172,7 +192,14 @@ impl RenderPass for BaseRenderPass {
                 //.inheritance_info(...)
                 .build(),
         );
+        let start_pass_query = frame_context.current_gpu_frame() * 2;
+        command_buffer.reset_query_pool(self.timestamp_query_pool, start_pass_query as _, 2);
 
+        command_buffer.write_timestamp(
+            vk::PipelineStageFlags::ALL_GRAPHICS,
+            self.timestamp_query_pool,
+            start_pass_query as _,
+        );
         command_buffer.begin_render_pass(
             &vk::RenderPassBeginInfo::builder()
                 .render_pass(self.render_pass)
@@ -187,6 +214,13 @@ impl RenderPass for BaseRenderPass {
     fn end(&mut self, frame_context: &FrameContext) {
         let command_buffer = self.command_buffer.get_mut(frame_context);
         command_buffer.end_render_pass();
+
+        let end_pass_query = frame_context.current_gpu_frame() * 2 + 1;
+        command_buffer.write_timestamp(
+            vk::PipelineStageFlags::ALL_GRAPHICS,
+            self.timestamp_query_pool,
+            end_pass_query as _,
+        );
     }
 
     fn submit_commands(&mut self, frame_context: &FrameContext, queue: &mut DeviceQueue) {
@@ -233,6 +267,25 @@ impl RenderPass for BaseRenderPass {
     fn add_wait_condition(&mut self, semaphore: vk::Semaphore, stage_mask: vk::PipelineStageFlags) {
         self.wait_semaphores.push(semaphore);
         self.wait_stage_mask.push(stage_mask);
+    }
+
+    fn try_get_oldest_timestamp(&self, frame_context: &FrameContext, factory: &mut DeviceFactory) -> Option<[u64; 2]> {
+        let oldest_frame = (frame_context.current_gpu_frame() + NUM_BUFFERED_GPU_FRAMES) % NUM_BUFFERED_GPU_FRAMES;
+        let mut data = [0u64; 2];
+        let result = factory.get_query_pool_results(
+            self.timestamp_query_pool,
+            (oldest_frame * 2) as _,
+            2,
+            &mut data,
+            vk::QueryResultFlags::TYPE_64,
+        );
+        match result {
+            Ok(_) => Some(data),
+            Err(code) => match code {
+                vk::Result::NOT_READY => None,
+                _ => panic!("try_get_oldest_timestamp(): Internal GPU error: {}", code),
+            },
+        }
     }
 
     fn destroy(&mut self, factory: &mut DeviceFactory) {

@@ -10,12 +10,9 @@ malwerks_resources = { path = "../malwerks_resources" }
 log = "*"
 ultraviolet = "*"
 rayon = "*"
+puffin = "*"
 
 [dev-dependencies]
 malwerks_dds = { path = "../malwerks_dds" }
 ash = "*"
 pretty_env_logger = "*"
-
-[dependencies.microprofile]
-version = "0.2.1"
-features = ["disabled"]

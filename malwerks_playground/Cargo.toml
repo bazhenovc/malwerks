@@ -16,6 +16,8 @@ pretty_env_logger = "*"
 winit = "*"
 imgui = "*"
 gilrs = "*"
+puffin = "*"
+puffin-imgui = "*"
 
 [build-dependencies]
 depgraph = "*"

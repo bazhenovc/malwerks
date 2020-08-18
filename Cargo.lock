@@ -179,9 +179,9 @@ checksum = "4785bdd1c96b2a846b2bd7cc02e86b6b3dbf14e7e53446c4f54c92a361040822"
 
 [[package]]
 name = "clap"
-version = "2.33.2"
+version = "2.33.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10040cdf04294b565d9e0319955430099ec3813a64c952b86a41200ad714ae48"
+checksum = "37e58ac78573c40708d45522f0d80fa2f01cc4f9b4e2bf749807255454312002"
 dependencies = [
  "ansi_term",
  "atty",
@@ -665,6 +665,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aaf91faf136cb47367fa430cd46e37a788775e7fa104f8b4bcb3861dc389b724"
 
 [[package]]
+name = "glam"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a09830d3a54df0e02f67340598635e75446cb87dc0d8d734f3c9742e02cc04f"
+
+[[package]]
 name = "gltf"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -998,6 +1004,8 @@ dependencies = [
  "metal-rs",
  "objc",
  "pretty_env_logger",
+ "puffin",
+ "puffin-imgui",
  "shaderc",
  "winapi 0.3.9",
  "winit",
@@ -1022,8 +1030,8 @@ dependencies = [
  "malwerks_dds",
  "malwerks_resources",
  "malwerks_vk",
- "microprofile",
  "pretty_env_logger",
+ "puffin",
  "rayon",
  "ultraviolet",
 ]
@@ -1126,15 +1134,6 @@ dependencies = [
  "objc",
  "objc-foundation",
  "objc_id",
-]
-
-[[package]]
-name = "microprofile"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "998988e00fcd6a009cd74528f25051d3a0c414c51f30e4696b59346c6d754257"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -1391,6 +1390,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ab52be62400ca80aa00285d25253d7f7c437b7375c4de678f5405d3afe82ca5"
 
 [[package]]
+name = "once_cell"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "260e51e7efe62b592207e9e13a68e43692a7a279171d6ba57abd208bf23645ad"
+
+[[package]]
 name = "ordered-float"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1498,6 +1503,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04f5f085b5d71e2188cb8271e5da0161ad52c3f227a661a3c135fdf28e258b12"
 dependencies = [
  "unicode-xid 0.2.1",
+]
+
+[[package]]
+name = "puffin"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46778c1d64301a16b71a3c12410668713b61bfeb20d09c2528edd17491406b44"
+dependencies = [
+ "byteorder",
+ "once_cell",
+ "parking_lot",
+]
+
+[[package]]
+name = "puffin-imgui"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d11b6797e873e582f504100996f096eb221f8d60ef79947fa0b0924d92515e90"
+dependencies = [
+ "glam",
+ "imgui",
+ "puffin",
+ "serde",
 ]
 
 [[package]]

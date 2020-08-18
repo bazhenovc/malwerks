@@ -18,10 +18,11 @@ pub fn show_debug_window<'a>(
 ) {
     use imgui::*;
 
+    puffin::profile_function!();
     Window::new(im_str!("Debugging tools"))
         .always_auto_resize(true)
         .build(ui, || {
-            // fps/dt
+            // profiler
             if CollapsingHeader::new(im_str!("Performance"))
                 .default_open(true)
                 .build(ui)
@@ -31,6 +32,10 @@ pub fn show_debug_window<'a>(
                     average_frame_time,
                     average_fps
                 ));
+
+                if ui.button(im_str!("Toggle profiler"), [0.0, 0.0]) {
+                    puffin::set_scopes_on(!puffin::are_scopes_on());
+                }
             }
 
             // camera

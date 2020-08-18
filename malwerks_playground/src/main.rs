@@ -50,6 +50,9 @@ struct Game {
     imgui_platform: imgui_winit::WinitPlatform,
     imgui_graphics: imgui_graphics::ImguiGraphics,
 
+    gpu_profiler: GpuProfiler,
+    profiler_ui: puffin_imgui::ProfilerUi,
+
     render_world: RenderWorld,
     post_process: PostProcess,
     frame_time: std::time::Instant,
@@ -139,6 +142,10 @@ impl Game {
         }
         imgui.set_ini_filename(None);
 
+        puffin::set_scopes_on(true);
+        let gpu_profiler = GpuProfiler::new();
+        let profiler_ui = puffin_imgui::ProfilerUi::default();
+
         log::info!("loading world: {:?}", world_path);
         let render_world = RenderWorld::from_file(
             &world_path,
@@ -211,6 +218,8 @@ impl Game {
             imgui,
             imgui_platform,
             imgui_graphics,
+            gpu_profiler,
+            profiler_ui,
             render_world,
             post_process,
             frame_time: std::time::Instant::now(),
@@ -242,7 +251,7 @@ impl Game {
         self.camera_state.handle_action_queue(self.input_map.get_action_queue());
     }
 
-    fn draw_and_present(&mut self, window: &winit::window::Window, gilrs: &gilrs::Gilrs) {
+    fn render_and_present(&mut self, window: &winit::window::Window, gilrs: &gilrs::Gilrs) {
         // self.environment_probes.bake_environment_probes(
         //     ENVIRONMENT_PROBE_WIDTH,
         //     ENVIRONMENT_PROBE_HEIGHT,
@@ -251,14 +260,31 @@ impl Game {
         //     &mut self.factory,
         //     &mut self.queue,
         // );
-
-        let time_now = std::time::Instant::now();
-        let time_delta = (time_now - self.frame_time).as_secs_f32();
-        self.frame_time = time_now;
+        (*puffin::GlobalProfiler::lock()).new_frame();
 
         let frame_context = self.device.begin_frame();
+        {
+            puffin::profile_scope!("gather_gpu_profile");
+            let render_world_timestamps = self
+                .render_world
+                .try_get_oldest_timestamps(&frame_context, &mut self.factory);
+            for scope in render_world_timestamps.iter() {
+                let scope_offset = self.gpu_profiler.begin_scope(scope.0, scope.1[0]);
+                self.gpu_profiler.end_scope(scope_offset, scope.1[1]);
+            }
+
+            if let Some(surface_pass_scope) = self
+                .surface_pass
+                .try_get_oldest_timestamp(&frame_context, &mut self.factory)
+            {
+                let scope_offset = self.gpu_profiler.begin_scope("Final", surface_pass_scope[0]);
+                self.gpu_profiler.end_scope(scope_offset, surface_pass_scope[1]);
+            }
+            self.gpu_profiler.report_frame();
+        }
+
         let image_index = {
-            microprofile::scope!("acquire_frame", "total", 0);
+            puffin::profile_scope!("acquire_frame");
             let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
             let frame_fence = self.surface_pass.get_signal_fence(&frame_context);
 
@@ -266,81 +292,95 @@ impl Game {
             self.device.wait_for_fences(&[frame_fence], true, u64::max_value());
             self.surface.acquire_next_image(u64::max_value(), image_ready_semaphore)
         };
-        microprofile::scope!("draw_and_present", "total", 0);
 
-        // setup render passes
-        self.surface_pass.add_dependency(
-            &frame_context,
-            self.render_world.get_render_pass(),
-            vk::PipelineStageFlags::ALL_GRAPHICS,
-        );
-
-        // render world
-        self.camera_state.update(time_delta);
-        self.render_world.render(
-            self.camera_state.get_camera(),
-            &frame_context,
-            &mut self.device,
-            &mut self.factory,
-            &mut self.queue,
-        );
-
-        // process backbuffer pass and post processing
-        let screen_area = {
-            let surface_extent = self.surface.get_surface_extent();
-            vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: surface_extent,
-            }
-        };
-        self.surface_pass
-            .begin(&frame_context, &mut self.device, &mut self.factory, screen_area);
-        self.post_process
-            .render(screen_area, &frame_context, &mut self.surface_pass);
-
-        // process imgui
-        let io = self.imgui.io_mut();
-        io.delta_time = time_delta;
-        let average_delta = io.framerate;
-
-        self.imgui_platform.prepare_frame(io, window).unwrap();
-
-        let ui = self.imgui.frame();
-        self.imgui_platform.prepare_render(&ui, window);
         {
-            debug_ui::show_debug_window(
-                &ui,
-                &window,
-                &gilrs,
-                &mut self.camera_state,
-                &mut self.render_world,
-                1000.0 / average_delta,
-                average_delta,
-            );
+            puffin::profile_scope!("render");
 
-            //let mut demo_window_open = true;
-            //ui.show_demo_window(&mut demo_window_open);
+            let time_now = std::time::Instant::now();
+            let time_delta = (time_now - self.frame_time).as_secs_f32();
+            self.frame_time = time_now;
 
-            self.imgui_graphics.draw(
-                &frame_context,
-                &mut self.factory,
-                self.surface_pass.get_command_buffer(&frame_context),
-                ui.render(),
-            );
+            {
+                puffin::profile_scope!("render_world");
+                // setup render passes
+                self.surface_pass.add_dependency(
+                    &frame_context,
+                    self.render_world.get_render_pass(),
+                    vk::PipelineStageFlags::ALL_GRAPHICS,
+                );
+
+                // render world
+                self.camera_state.update(time_delta);
+                self.render_world.render(
+                    self.camera_state.get_camera(),
+                    &frame_context,
+                    &mut self.device,
+                    &mut self.factory,
+                    &mut self.queue,
+                );
+
+                // process backbuffer pass and post processing
+                let screen_area = {
+                    let surface_extent = self.surface.get_surface_extent();
+                    vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: surface_extent,
+                    }
+                };
+                self.surface_pass
+                    .begin(&frame_context, &mut self.device, &mut self.factory, screen_area);
+                self.post_process
+                    .render(screen_area, &frame_context, &mut self.surface_pass);
+            }
+
+            // process imgui
+            {
+                puffin::profile_scope!("render_imgui");
+                let io = self.imgui.io_mut();
+                io.delta_time = time_delta;
+                let average_delta = io.framerate;
+
+                self.imgui_platform.prepare_frame(io, window).unwrap();
+
+                let ui = self.imgui.frame();
+                self.imgui_platform.prepare_render(&ui, window);
+                {
+                    debug_ui::show_debug_window(
+                        &ui,
+                        &window,
+                        &gilrs,
+                        &mut self.camera_state,
+                        &mut self.render_world,
+                        1000.0 / average_delta,
+                        average_delta,
+                    );
+
+                    let _profiler_window_open = self.profiler_ui.window(&ui);
+
+                    //let mut demo_window_open = true;
+                    //ui.show_demo_window(&mut demo_window_open);
+
+                    self.imgui_graphics.draw(
+                        &frame_context,
+                        &mut self.factory,
+                        self.surface_pass.get_command_buffer(&frame_context),
+                        ui.render(),
+                    );
+                }
+            }
         }
 
-        // present
-        self.surface_pass.end(&frame_context);
-        self.surface_pass.submit_commands(&frame_context, &mut self.queue);
-        self.surface.present(
-            &mut self.queue,
-            self.surface_pass.get_signal_semaphore(&frame_context),
-            image_index,
-        );
-        self.device.end_frame(frame_context);
-
-        // flip profiler
-        microprofile::flip!();
+        {
+            puffin::profile_scope!("present");
+            self.surface_pass.end(&frame_context);
+            self.surface_pass.submit_commands(&frame_context, &mut self.queue);
+            self.surface.present(
+                &mut self.queue,
+                self.surface_pass.get_signal_semaphore(&frame_context),
+                image_index,
+            );
+            self.device.end_frame(frame_context);
+        }
     }
 }
 
@@ -362,9 +402,6 @@ fn main() {
         log::error!("usage: malwerks_playground <world file name>");
         return;
     }
-
-    microprofile::init!();
-    microprofile::set_enable_all_groups!(true);
 
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -400,12 +437,11 @@ fn main() {
             }
 
             Event::RedrawRequested(_) => {
-                game.draw_and_present(&window, &gilrs);
+                game.render_and_present(&window, &gilrs);
             }
 
             Event::LoopDestroyed => {
-                //microprofile::dump_file_immediately!("profile.html", "");
-                microprofile::shutdown!();
+                // Nothing right now
             }
 
             // user input

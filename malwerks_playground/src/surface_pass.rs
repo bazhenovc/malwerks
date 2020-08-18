@@ -173,6 +173,10 @@ impl RenderPass for SurfacePass {
         self.base_pass.add_wait_condition(semaphore, stage_mask);
     }
 
+    fn try_get_oldest_timestamp(&self, frame_context: &FrameContext, factory: &mut DeviceFactory) -> Option<[u64; 2]> {
+        self.base_pass.try_get_oldest_timestamp(frame_context, factory)
+    }
+
     fn destroy(&mut self, factory: &mut DeviceFactory) {
         self.image_ready_semaphore
             .destroy(|res| factory.destroy_semaphore(*res));

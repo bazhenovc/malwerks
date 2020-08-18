@@ -250,8 +250,8 @@ impl Device {
                 .queue_create_infos(&queue_create_info)
                 .push_next(&mut enabled_device_features);
 
-                // TODO: enable uint8 index format when AMD starts supporting it
-                // .push_next(&mut uint8_indexing);
+            // TODO: enable uint8 index format when AMD starts supporting it
+            // .push_next(&mut uint8_indexing);
 
             if options.enable_ray_tracing_nv {
                 device_extension_names.push(vk::KhrGetMemoryRequirements2Fn::name().as_ptr());

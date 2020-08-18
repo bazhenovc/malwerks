@@ -92,6 +92,8 @@ impl RenderWorld {
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) {
+        puffin::profile_function!();
+
         let viewport = camera.get_viewport();
         let screen_area = vk::Rect2D {
             offset: vk::Offset2D {
@@ -179,6 +181,19 @@ impl RenderWorld {
 
     pub fn get_instance_count(&self) -> usize {
         self.static_scenery.get_instance_count()
+    }
+
+    pub fn try_get_oldest_timestamps(
+        &self,
+        frame_context: &FrameContext,
+        factory: &mut DeviceFactory,
+    ) -> [(&'static str, [u64; 2]); 1] {
+        let mut timestamps = [("ForwardPass", [0u64; 2])];
+        match self.forward_pass.try_get_oldest_timestamp(frame_context, factory) {
+            Some(timestamp) => timestamps[0].1 = timestamp,
+            None => {}
+        }
+        timestamps
     }
 }
 
