@@ -3,28 +3,30 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#[macro_use]
-extern crate clap;
+#[derive(Debug, structopt::StructOpt)]
+#[structopt(name = "convert_metallic_roughness", about = "Converts metallic and roughness images into one")]
+struct CommandLineOptions {
+    #[structopt(short = "r", long = "roughness", parse(from_os_str))]
+    roughness: std::path::PathBuf,
+
+    #[structopt(short = "m", long = "metallic", parse(from_os_str))]
+    metallic: Option<std::path::PathBuf>,
+
+    #[structopt(short = "o", long = "output", parse(from_os_str))]
+    output: std::path::PathBuf,
+}
 
 fn main() {
-    let matches = clap::clap_app!(app =>
-            (version: "0.1")
-            (author: "Kyrylo Bazhenov <bazhenovc@gmail.com>")
-            (about: "Converts metallic and roughness textures into one")
-            (@arg METALLIC: -m --metallic +takes_value "Sets metallic image to use")
-            (@arg ROUGHNESS: -r --roughness +required +takes_value "Sets roughness image to use")
-            (@arg OUTPUT: -o --output +required +takes_value "Sets output file name"))
-    .get_matches();
+    let command_line = {
+        use structopt::StructOpt;
+        CommandLineOptions::from_args()
+    };
 
-    //let metallic_path = std::path::PathBuf::from(matches.value_of("METALLIC").expect("No metallic image provided"));
-    let roughness_path = std::path::PathBuf::from(matches.value_of("ROUGHNESS").expect("No roughness image provided"));
-    let output_path = std::path::PathBuf::from(matches.value_of("OUTPUT").expect("No output path provided"));
-
-    let roughness_image = image::open(roughness_path)
+    let roughness_image = image::open(command_line.roughness)
         .expect("Failed to open roughness image")
         .into_luma();
 
-    let metallic_image = if let Some(metallic_path) = matches.value_of("METALLIC") {
+    let metallic_image = if let Some(metallic_path) = command_line.metallic {
         image::open(metallic_path)
             .expect("Failed to open metallic image")
             .into_luma()
@@ -54,5 +56,5 @@ fn main() {
         }
     }
 
-    output_image.save(output_path).expect("Failed to save output image");
+    output_image.save(command_line.output).expect("Failed to save output image");
 }

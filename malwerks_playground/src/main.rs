@@ -24,6 +24,16 @@ const RENDER_HEIGHT: u32 = 1080;
 //const RENDER_WIDTH: u32 = 2880;
 //const RENDER_HEIGHT: u32 = 1620;
 
+#[derive(Debug, structopt::StructOpt)]
+#[structopt(name = "malwerks_playground", about = "Playground application")]
+struct CommandLineOptions {
+    #[structopt(short = "i", long = "input", parse(from_os_str))]
+    input_file: std::path::PathBuf,
+
+    #[structopt(short = "v", long = "validation")]
+    enable_validation: bool,
+}
+
 struct TemporaryCommandBuffer {
     command_pool: vk::CommandPool,
     command_buffer: CommandBuffer,
@@ -83,13 +93,13 @@ impl Drop for Game {
 }
 
 impl Game {
-    fn new(window: &winit::window::Window, world_path: &std::path::Path) -> Self {
+    fn new(window: &winit::window::Window, resource_path: &std::path::Path, command_line: CommandLineOptions) -> Self {
         let mut device = Device::new(
             SurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
                 surface_winit::create_surface(entry, instance, window).expect("failed to create KHR surface")
             }),
             DeviceOptions {
-                enable_validation: true,
+                enable_validation: command_line.enable_validation,
                 // enable_ray_tracing_nv: true,
                 ..Default::default()
             },
@@ -146,6 +156,7 @@ impl Game {
         let gpu_profiler = GpuProfiler::new();
         let profiler_ui = puffin_imgui::ProfilerUi::default();
 
+        let world_path = resource_path.join(&command_line.input_file);
         log::info!("loading world: {:?}", world_path);
         let render_world = RenderWorld::from_file(
             &world_path,
@@ -394,14 +405,13 @@ fn main() {
 
     pretty_env_logger::init();
 
-    let args: Vec<String> = std::env::args().collect();
     log::info!("resource path set to {:?}", &resource_path);
-    log::info!("command line: {:?}", args);
 
-    if args.len() < 2 {
-        log::error!("usage: malwerks_playground <world file name>");
-        return;
-    }
+    let command_line = {
+        use structopt::StructOpt;
+        CommandLineOptions::from_args()
+    };
+    log::info!("command line: {:?}", &command_line);
 
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
@@ -416,7 +426,7 @@ fn main() {
         log::info!("gamepad detected: {} {:?}", gamepad.name(), gamepad.power_info());
     }
 
-    let mut game = Game::new(&window, &resource_path.join(&args[1]));
+    let mut game = Game::new(&window, &resource_path, command_line);
 
     // run events loop
     event_loop.run(move |event, _, control_flow| {

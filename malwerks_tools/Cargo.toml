@@ -18,7 +18,7 @@ ultraviolet = "*"
 rayon = "*"
 indicatif = "*"
 image = "*"
-clap = "*"
+structopt = "*"
 bytemuck = "*"
 meshopt = "*"
 

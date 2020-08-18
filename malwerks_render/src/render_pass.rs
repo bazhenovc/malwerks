@@ -294,5 +294,6 @@ impl RenderPass for BaseRenderPass {
         self.command_pool.destroy(|res| factory.destroy_command_pool(*res));
         self.signal_semaphore.destroy(|res| factory.destroy_semaphore(*res));
         self.signal_fence.destroy(|res| factory.destroy_fence(*res));
+        factory.destroy_query_pool(self.timestamp_query_pool);
     }
 }

@@ -3,9 +3,6 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#[macro_use]
-extern crate clap;
-
 use malwerks_resources::*;
 
 mod gltf_images;
@@ -23,7 +20,23 @@ use gltf_material_instances::*;
 use gltf_meshes::*;
 use gltf_nodes::*;
 
-fn import_gltf(file_name: &str, optimize_geometry: bool) -> DiskStaticScenery {
+#[derive(Debug, structopt::StructOpt)]
+#[structopt(name = "import_gltf", about = "glTF import tool")]
+struct CommandLineOptions {
+    #[structopt(short = "i", long = "input", parse(from_os_str))]
+    input_file: std::path::PathBuf,
+
+    #[structopt(short = "o", long = "output")]
+    output_file: Option<std::path::PathBuf>,
+
+    #[structopt(short = "g", long = "optimize_geometry")]
+    optimize_geometry: bool,
+
+    #[structopt(short = "c", long = "compression_level", default_value = "9")]
+    compression_level: u32,
+}
+
+fn import_gltf(command_line: &CommandLineOptions) -> DiskStaticScenery {
     let mut static_scenery = DiskStaticScenery {
         images: Vec::new(),
         buffers: Vec::new(),
@@ -36,8 +49,8 @@ fn import_gltf(file_name: &str, optimize_geometry: bool) -> DiskStaticScenery {
         environment_probes: Vec::new(),
     };
 
-    let gltf = gltf::Gltf::open(file_name).expect("failed to open gltf");
-    let base_path = std::path::Path::new(file_name)
+    let gltf = gltf::Gltf::open(&command_line.input_file).expect("failed to open gltf");
+    let base_path = std::path::Path::new(&command_line.input_file)
         .parent()
         .expect("failed to get file base path");
 
@@ -49,7 +62,7 @@ fn import_gltf(file_name: &str, optimize_geometry: bool) -> DiskStaticScenery {
         gltf.views(),
         gltf.meshes(),
         gltf.materials(),
-        optimize_geometry,
+        command_line.optimize_geometry,
     );
     import_nodes(&mut static_scenery, primitive_remap_table, gltf.nodes());
     import_images(&mut static_scenery, &base_path, gltf.materials(), gltf.images());
@@ -65,38 +78,18 @@ fn main() {
 
     pretty_env_logger::init();
 
-    let matches = clap::clap_app!(app =>
-        (version: "0.1")
-        (author: "Kyrylo Bazhenov <bazhenovc@gmail.com>")
-        (about: "Converts a gltf scene into internal representation")
-        (@arg INPUT_FILE: -i --input +takes_value +required "Sets input file to load")
-        (@arg OUTPUT_FILE: -o --output +takes_value "Sets output file")
-        (@arg COMPRESSION_LEVEL: -c --compression_level +takes_value "Sets the compression level for the output file")
-        (@arg OPTIMIZE_GEOMETRY: -g --optimize_geometry +takes_value "Controls whether to optimize geometry or not"))
-    .get_matches();
+    let command_line = {
+        use structopt::StructOpt;
+        CommandLineOptions::from_args()
+    };
 
-    let input_file = matches.value_of("INPUT_FILE").expect("no input file specified");
-    let output_file = if let Some(file) = matches.value_of("OUTPUT_FILE") {
+    let static_scenery = import_gltf(&command_line);
+
+    let output_file = if let Some(file) = command_line.output_file {
         std::path::PathBuf::from(file)
     } else {
-        std::path::Path::new(&input_file).with_extension("world")
+        std::path::Path::new(&command_line.input_file).with_extension("world")
     };
-    let compression_level = if let Some(level) = matches.value_of("COMPRESSION_LEVEL") {
-        level
-            .parse()
-            .expect("compression level does not seem to be a valid number")
-    } else {
-        9
-    };
-    let optimize_geometry = if let Some(optimize_geometry) = matches.value_of("OPTIMIZE_GEOMETRY") {
-        optimize_geometry
-            .parse()
-            .expect("optimize_geometry value does not seem to be a boolean")
-    } else {
-        true
-    };
-
-    let static_scenery = import_gltf(&input_file, optimize_geometry);
     log::info!(
         "saving {} buffers, {} meshes, {} images, {} samplers, {} layouts, {} instances, {} materials, {} buckets to {:?}",
         static_scenery.buffers.len(),
@@ -116,6 +109,6 @@ fn main() {
             .truncate(true)
             .open(output_file)
             .expect("failed to open output file");
-        static_scenery.serialize_into(std::io::BufWriter::new(file), compression_level);
+        static_scenery.serialize_into(std::io::BufWriter::new(file), command_line.compression_level);
     }
 }
