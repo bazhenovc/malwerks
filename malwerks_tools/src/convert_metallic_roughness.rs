@@ -4,7 +4,10 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #[derive(Debug, structopt::StructOpt)]
-#[structopt(name = "convert_metallic_roughness", about = "Converts metallic and roughness images into one")]
+#[structopt(
+    name = "convert_metallic_roughness",
+    about = "Converts metallic and roughness images into one"
+)]
 struct CommandLineOptions {
     #[structopt(short = "r", long = "roughness", parse(from_os_str))]
     roughness: std::path::PathBuf,
@@ -56,5 +59,7 @@ fn main() {
         }
     }
 
-    output_image.save(command_line.output).expect("Failed to save output image");
+    output_image
+        .save(command_line.output)
+        .expect("Failed to save output image");
 }

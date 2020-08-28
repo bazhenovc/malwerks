@@ -164,6 +164,8 @@ impl InputMap {
                     } => {
                         if let Some(action) = self.mouse_drag_map.get_mut(button) {
                             action.active = false;
+                            action.value0 = 0.0;
+                            action.value1 = 0.0;
                             if self.mouse_grab {
                                 self.mouse_grab = false;
                                 window.set_cursor_visible(true);

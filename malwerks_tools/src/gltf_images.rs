@@ -92,101 +92,12 @@ pub fn import_probes(static_scenery: &mut DiskStaticScenery, base_path: &std::pa
         base_path,
         &probe_path.join("output_pmrem.dds"),
     ));
-    static_scenery.images.push(compress_image(
-        ImageUsage::EnvironmentBrdf,
-        base_path,
-        &probe_path.join("brdf.dds"),
-    ));
-
-    let skybox_glsl = std::fs::read_to_string(
-        base_path
-            .join("..")
-            .join("..")
-            .join("malwerks_shaders")
-            .join("environment_probe.glsl"),
-    )
-    .expect("failed to open environment_probe.glsl");
-
-    let mut compile_options = shaderc::CompileOptions::new().expect("failed to initialize GLSL compiler options");
-    compile_options.set_source_language(shaderc::SourceLanguage::GLSL);
-    compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-    compile_options.set_warnings_as_errors();
-
-    let mut vertex_stage_options = compile_options.clone().expect("failed to clone vertex options");
-    vertex_stage_options.add_macro_definition("VERTEX_STAGE", None);
-    let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
-    fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
-
-    let mut ray_tracing_options = compile_options.clone().expect("failed to clone ray tracing options");
-    ray_tracing_options.add_macro_definition("RAY_TRACING", None);
-    let mut ray_gen_options = ray_tracing_options.clone().expect("failed to clone ray gen options");
-    ray_gen_options.add_macro_definition("RAY_GEN_STAGE", None);
-    let mut ray_miss_options = ray_tracing_options.clone().expect("failed to clone ray miss options");
-    ray_miss_options.add_macro_definition("RAY_MISS_STAGE", None);
-
-    let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
-    let skybox_vertex_stage = Vec::from(
-        compiler
-            .compile_into_spirv(
-                &skybox_glsl,
-                shaderc::ShaderKind::Vertex,
-                "environment_probe.glsl",
-                "main",
-                Some(&vertex_stage_options),
-            )
-            .expect("failed to compile vertex shader")
-            .as_binary(),
-    );
-    let skybox_fragment_stage = Vec::from(
-        compiler
-            .compile_into_spirv(
-                &skybox_glsl,
-                shaderc::ShaderKind::Fragment,
-                "environment_probe.glsl",
-                "main",
-                Some(&fragment_stage_options),
-            )
-            .expect("failed to compile fragment shader")
-            .as_binary(),
-    );
-
-    let ray_gen_stage = Vec::from(
-        compiler
-            .compile_into_spirv(
-                &skybox_glsl,
-                shaderc::ShaderKind::RayGeneration,
-                "environment_probe.glsl",
-                "main",
-                Some(&ray_gen_options),
-            )
-            .expect("failed to compile skybox ray miss shader")
-            .as_binary(),
-    );
-    let ray_miss_stage = Vec::from(
-        compiler
-            .compile_into_spirv(
-                &skybox_glsl,
-                shaderc::ShaderKind::Miss,
-                "environment_probe.glsl",
-                "main",
-                Some(&ray_miss_options),
-            )
-            .expect("failed to compile skybox ray miss shader")
-            .as_binary(),
-    );
 
     static_scenery.environment_probes.reserve_exact(1);
     static_scenery.environment_probes.push(DiskEnvironmentProbe {
         skybox_image: probe_image_id,
-        skybox_vertex_stage,
-        skybox_fragment_stage,
-
         iem_image: probe_image_id + 1,
         pmrem_image: probe_image_id + 2,
-        precomputed_brdf_image: probe_image_id + 3,
-
-        ray_gen_stage,
-        ray_miss_stage,
     });
 }
 

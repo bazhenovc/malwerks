@@ -54,7 +54,6 @@ pub struct DiskMaterial {
     pub fragment_stage: Vec<u32>,
     pub fragment_alpha_test: bool,
     pub fragment_cull_flags: u32, // vk::CullModeFlags pretending to be u32
-    pub ray_closest_hit_stage: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -67,15 +66,23 @@ pub struct DiskBuffer {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct DiskMesh {
+pub struct DiskBoundingCone {
+    pub cone_apex: [f32; 4],
+    pub cone_axis: [f32; 4],
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiskMeshCluster {
+    pub vertex_count: u16,
+    pub index_count: u16,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct DiskStaticMesh {
     pub vertex_buffer: usize,
-    pub vertex_count: u32,
-    pub vertex_stride: u64,
-
-    pub index_buffer: Option<(usize, i32)>, // buffer_id, vk::IndexType pretending to be i32
-    pub index_count: u32,
-
-    pub bounding_box: ([f32; 3], [f32; 3]),
+    pub index_buffer: usize,
+    pub mesh_clusters: Vec<DiskMeshCluster>,
+    pub bounding_cones: Vec<DiskBoundingCone>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -83,42 +90,52 @@ pub struct DiskRenderInstance {
     pub mesh: usize,
     pub material_instance: usize,
     pub transforms: Vec<[f32; 16]>,
-    pub bounding_boxes: Vec<([f32; 3], [f32; 3])>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskRenderBucket {
     pub material: usize,
     pub instances: Vec<DiskRenderInstance>,
+    pub bounding_cone_buffer: usize,
+    pub draw_arguments_buffer: usize,
+    pub draw_arguments_count: usize,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskEnvironmentProbe {
     pub skybox_image: usize,
+    pub iem_image: usize,
+    pub pmrem_image: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DiskGlobalResources {
+    pub precomputed_brdf_image: usize,
+
+    pub apex_culling_compute_stage: Vec<u32>,
+
     pub skybox_vertex_stage: Vec<u32>,
     pub skybox_fragment_stage: Vec<u32>,
 
-    pub iem_image: usize,
-    pub pmrem_image: usize,
-    pub precomputed_brdf_image: usize,
+    pub postprocess_vertex_stage: Vec<u32>,
+    pub postprocess_fragment_stage: Vec<u32>,
 
-    pub ray_gen_stage: Vec<u32>,
-    pub ray_miss_stage: Vec<u32>,
+    pub imgui_vertex_stage: Vec<u32>,
+    pub imgui_fragment_stage: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskStaticScenery {
     pub buffers: Vec<DiskBuffer>,
-    pub meshes: Vec<DiskMesh>,
+    pub meshes: Vec<DiskStaticMesh>,
     pub images: Vec<DiskImage>,
     pub samplers: Vec<DiskSampler>,
     pub material_layouts: Vec<DiskMaterialLayout>,
     pub material_instances: Vec<DiskMaterialInstance>,
     pub materials: Vec<DiskMaterial>,
     pub buckets: Vec<DiskRenderBucket>,
-
-    // TODO: make this less specific
     pub environment_probes: Vec<DiskEnvironmentProbe>,
+    pub global_resources: DiskGlobalResources,
 }
 
 impl DiskStaticScenery {

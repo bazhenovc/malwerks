@@ -215,7 +215,7 @@ impl Device {
         let device = {
             let mut enabled_device_features = vk::PhysicalDeviceFeatures2::default();
             enabled_device_features.features.texture_compression_bc = vk::TRUE;
-            // enabled_device_features.features.multi_draw_indirect = vk::TRUE;
+            enabled_device_features.features.multi_draw_indirect = vk::TRUE;
 
             let queue_priorities = [1.0];
             let queue_create_info = [vk::DeviceQueueCreateInfo::builder()

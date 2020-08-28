@@ -5,14 +5,18 @@
 
 use malwerks_vk::*;
 
-pub(crate) fn copy_to_mapped_memory<T>(data: &[T], memory: *mut u8) {
+pub(crate) fn cast_mapped_memory<T>(memory: *mut u8) -> *mut T {
     // validate alignment, should be aligned to 8 and match alignment of T
-    assert_eq!((memory as usize) & ((1 << (8 - 1)) - 1), 0);
     assert_eq!((memory as usize) & ((1 << (std::mem::align_of::<T>() - 1)) - 1), 0);
 
+    #[allow(clippy::cast_ptr_alignment)] // alignment is validated above in runtime
+    let memory = memory as *mut T;
+    memory
+}
+
+pub(crate) fn copy_to_mapped_memory<T>(data: &[T], memory: *mut u8) {
     unsafe {
-        #[allow(clippy::cast_ptr_alignment)] // alignment is validated above
-        std::ptr::copy_nonoverlapping(data.as_ptr(), memory as _, data.len());
+        std::ptr::copy_nonoverlapping(data.as_ptr(), cast_mapped_memory(memory), data.len());
     }
 }
 

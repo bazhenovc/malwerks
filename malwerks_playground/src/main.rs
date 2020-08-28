@@ -12,17 +12,10 @@ mod input_map;
 mod surface_pass;
 mod surface_winit;
 
-// use malwerks_light_baker::*;
 use malwerks_render::*;
 
 const RENDER_WIDTH: u32 = 1920;
 const RENDER_HEIGHT: u32 = 1080;
-
-// const ENVIRONMENT_PROBE_WIDTH: u32 = 1024;
-// const ENVIRONMENT_PROBE_HEIGHT: u32 = 1024;
-
-//const RENDER_WIDTH: u32 = 2880;
-//const RENDER_HEIGHT: u32 = 1620;
 
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(name = "malwerks_playground", about = "Playground application")]
@@ -69,8 +62,6 @@ struct Game {
 
     input_map: input_map::InputMap,
     camera_state: camera_state::CameraState,
-    // acceleration_structure: AccelerationStructure,
-    // environment_probes: EnvironmentProbes,
 }
 
 impl Drop for Game {
@@ -82,9 +73,6 @@ impl Drop for Game {
         self.imgui_graphics.destroy(&mut self.factory);
         self.render_world.destroy(&mut self.factory);
         self.post_process.destroy(&mut self.factory);
-
-        // self.acceleration_structure.destroy(&mut self.factory);
-        // self.environment_probes.destroy(&mut self.factory);
 
         self.surface_pass.destroy(&mut self.factory);
         self.surface.destroy(&mut self.factory);
@@ -127,10 +115,27 @@ impl Game {
         let surface = surface_winit::SurfaceWinit::new(&device);
         let surface_pass = surface_pass::SurfacePass::new(&surface, &device, &mut factory);
 
+        let world_path = resource_path.join(&command_line.input_file);
+        let render_world = RenderWorld::from_file(
+            &world_path,
+            (RENDER_WIDTH, RENDER_HEIGHT),
+            &mut temporary_command_buffer.command_buffer,
+            &device,
+            &mut factory,
+            &mut queue,
+        );
+        let post_process = PostProcess::new(
+            render_world.get_global_resources(),
+            render_world.get_render_pass(),
+            &surface_pass,
+            &mut factory,
+        );
+
         let mut imgui = imgui::Context::create();
         let mut imgui_platform = imgui_winit::WinitPlatform::init(&mut imgui);
         let imgui_graphics = imgui_graphics::ImguiGraphics::new(
             &mut imgui,
+            render_world.get_global_resources(),
             &surface_pass,
             &mut temporary_command_buffer.command_buffer,
             &mut device,
@@ -153,42 +158,8 @@ impl Game {
         imgui.set_ini_filename(None);
 
         puffin::set_scopes_on(true);
-        let gpu_profiler = GpuProfiler::new();
+        let gpu_profiler = GpuProfiler::default();
         let profiler_ui = puffin_imgui::ProfilerUi::default();
-
-        let world_path = resource_path.join(&command_line.input_file);
-        log::info!("loading world: {:?}", world_path);
-        let render_world = RenderWorld::from_file(
-            &world_path,
-            (RENDER_WIDTH, RENDER_HEIGHT),
-            &mut temporary_command_buffer.command_buffer,
-            &device,
-            &mut factory,
-            &mut queue,
-        );
-        let post_process = PostProcess::new(
-            &include_spirv!("/shaders/post_process.vert.spv"),
-            &include_spirv!("/shaders/post_process.frag.spv"),
-            render_world.get_render_pass(),
-            &surface_pass,
-            &mut factory,
-        );
-
-        // let ray_tracing_properties = device.get_ray_tracing_properties_nv();
-        // log::info!("{:?}", &ray_tracing_properties);
-
-        // let mut acceleration_structure = AccelerationStructure::new(&render_world, &mut factory);
-        // acceleration_structure.build(&mut temporary_command_buffer.command_buffer, &mut factory, &mut queue);
-
-        // let mut environment_probes = EnvironmentProbes::new(
-        //     ENVIRONMENT_PROBE_WIDTH,
-        //     ENVIRONMENT_PROBE_HEIGHT,
-        //     &static_scenery,
-        //     &ray_tracing_properties,
-        //     &acceleration_structure,
-        //     &mut factory,
-        // );
-        // environment_probes.build(&mut temporary_command_buffer.command_buffer, &mut factory, &mut queue);
 
         let input_map = {
             use input_map::*;
@@ -241,8 +212,6 @@ impl Game {
                 width: RENDER_WIDTH,
                 height: RENDER_HEIGHT,
             }),
-            // acceleration_structure,
-            // environment_probes,
         }
     }
 
@@ -263,14 +232,6 @@ impl Game {
     }
 
     fn render_and_present(&mut self, window: &winit::window::Window, gilrs: &gilrs::Gilrs) {
-        // self.environment_probes.bake_environment_probes(
-        //     ENVIRONMENT_PROBE_WIDTH,
-        //     ENVIRONMENT_PROBE_HEIGHT,
-        //     &mut self.temporary_command_buffer.command_buffer,
-        //     &mut self.device,
-        //     &mut self.factory,
-        //     &mut self.queue,
-        // );
         (*puffin::GlobalProfiler::lock()).new_frame();
 
         let frame_context = self.device.begin_frame();
@@ -339,7 +300,8 @@ impl Game {
                     }
                 };
                 self.surface_pass
-                    .begin(&frame_context, &mut self.device, &mut self.factory, screen_area);
+                    .acquire_frame(&frame_context, &mut self.device, &mut self.factory);
+                self.surface_pass.begin(&frame_context, screen_area);
                 self.post_process
                     .render(screen_area, &frame_context, &mut self.surface_pass);
             }

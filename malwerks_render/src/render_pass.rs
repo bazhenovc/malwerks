@@ -6,13 +6,8 @@
 use malwerks_vk::*;
 
 pub trait RenderPass {
-    fn begin(
-        &mut self,
-        frame_context: &FrameContext,
-        device: &mut Device,
-        factory: &mut DeviceFactory,
-        render_area: vk::Rect2D,
-    );
+    fn acquire_frame(&mut self, frame_context: &FrameContext, device: &mut Device, factory: &mut DeviceFactory);
+    fn begin(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D);
     fn end(&mut self, frame_context: &FrameContext);
 
     fn submit_commands(&mut self, frame_context: &FrameContext, queue: &mut DeviceQueue);
@@ -42,15 +37,16 @@ pub trait RenderPass {
 macro_rules! default_render_pass_impl {
     ($pass_type: ty, $proxy_member: ident) => {
         impl RenderPass for $pass_type {
-            fn begin(
+            fn acquire_frame(
                 &mut self,
                 frame_context: &FrameContext,
                 device: &mut Device,
                 factory: &mut DeviceFactory,
-                render_area: vk::Rect2D,
             ) {
-                self.$proxy_member
-                    .begin(frame_context, device, factory, render_area);
+                self.$proxy_member.acquire_frame(frame_context, device, factory);
+            }
+            fn begin(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D) {
+                self.$proxy_member.begin(frame_context, render_area);
             }
 
             fn end(&mut self, frame_context: &FrameContext) {
@@ -172,13 +168,7 @@ impl BaseRenderPass {
 }
 
 impl RenderPass for BaseRenderPass {
-    fn begin(
-        &mut self,
-        frame_context: &FrameContext,
-        device: &mut Device,
-        factory: &mut DeviceFactory,
-        render_area: vk::Rect2D,
-    ) {
+    fn acquire_frame(&mut self, frame_context: &FrameContext, device: &mut Device, factory: &mut DeviceFactory) {
         let signal_fence = self.get_signal_fence(frame_context);
         device.reset_fences(&[signal_fence]);
 
@@ -200,6 +190,10 @@ impl RenderPass for BaseRenderPass {
             self.timestamp_query_pool,
             start_pass_query as _,
         );
+    }
+
+    fn begin(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D) {
+        let command_buffer = self.command_buffer.get_mut(frame_context);
         command_buffer.begin_render_pass(
             &vk::RenderPassBeginInfo::builder()
                 .render_pass(self.render_pass)

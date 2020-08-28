@@ -42,6 +42,7 @@ impl ImguiGraphics {
 
     pub fn new(
         imgui: &mut imgui::Context,
+        global_resources: &DiskGlobalResources,
         pass: &SurfacePass,
         command_buffer: &mut CommandBuffer,
         _device: &mut Device,
@@ -50,12 +51,12 @@ impl ImguiGraphics {
     ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&include_spirv!("/shaders/imgui.vert.spv"))
+                .code(&global_resources.imgui_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&include_spirv!("/shaders/imgui.frag.spv"))
+                .code(&global_resources.imgui_fragment_stage)
                 .build(),
         );
 

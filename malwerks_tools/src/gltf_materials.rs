@@ -39,33 +39,28 @@ pub fn generate_material<'a>(
         ));
         last_attribute_location = last_attribute_location.max(attribute.location);
     }
-    shader_prelude.push_str(&format!(
-        "layout (location = {}) in mat4 WorldTransform;\n",
-        last_attribute_location + 1
-    ));
-    //shader_prelude.push_str(&format!(
-    //    "layout (location = {}) in mat3 NormalTransform;\n",
-    //    last_attribute_location + 5,
-    //));
+    shader_prelude.push_str("layout (std430, set = 1, binding = 0) readonly buffer InstanceDataBuffer {\n");
+    shader_prelude.push_str("    mat4 WorldTransforms[];\n");
+    shader_prelude.push_str("};\n");
     shader_prelude.push_str("vec3 transform_direction(vec3 v, mat3 m)\n");
     shader_prelude
         .push_str("{ return normalize(m * (v / vec3(dot(m[0], m[0]), dot(m[1], m[1]), dot(m[2], m[2])))); }\n");
     shader_prelude.push_str("vec4 generated_vertex_shader() {\n");
-    shader_prelude.push_str("    mat4 normal_transform = transpose(inverse(WorldTransform));\n");
+    shader_prelude.push_str("    mat4 world_transform = WorldTransforms[gl_InstanceIndex];\n");
     for attribute in attributes {
         match attribute.semantic {
             gltf::mesh::Semantic::Positions => shader_prelude.push_str(&format!(
-                "    VS_{0} = (WorldTransform * vec4(IN_{0}.xyz, 1.0)).xyz;\n",
+                "    VS_{0} = (world_transform * vec4(IN_{0}.xyz, 1.0)).xyz;\n",
                 attribute.semantic_name
             )),
 
             gltf::mesh::Semantic::Normals => shader_prelude.push_str(&format!(
-                "    VS_{0} = transform_direction(IN_{0}, mat3(WorldTransform));\n",
+                "    VS_{0} = transform_direction(IN_{0}, mat3(world_transform));\n",
                 attribute.semantic_name
             )),
 
             gltf::mesh::Semantic::Tangents => shader_prelude.push_str(&format!(
-                "    VS_{0} = vec4(normalize(mat3(WorldTransform) * IN_{0}.xyz), IN_{0}.w);\n",
+                "    VS_{0} = vec4(normalize(mat3(world_transform) * IN_{0}.xyz), IN_{0}.w);\n",
                 attribute.semantic_name
             )),
 
@@ -85,7 +80,7 @@ pub fn generate_material<'a>(
                     image.texture().sampler().index().unwrap_or(0),
                 ));
                 $prelude.push_str(&format!(
-                    "layout (set = 1, binding = {}) uniform sampler2D {};\n",
+                    "layout (set = 2, binding = {}) uniform sampler2D {};\n",
                     binding, $texture_name
                 ));
                 $prelude.push_str(&format!("#define HAS_{}\n", $texture_name));
@@ -187,11 +182,6 @@ pub fn generate_material<'a>(
         vertex_stage_options.add_macro_definition("VERTEX_STAGE", None);
         let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
         fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
-        let mut ray_closest_hit_options = compile_options
-            .clone()
-            .expect("failed to clone ray closest hit options");
-        ray_closest_hit_options.add_macro_definition("RAY_TRACING", None);
-        ray_closest_hit_options.add_macro_definition("RAY_CLOSEST_HIT_STAGE", None);
 
         let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
         let vertex_stage = compiler
@@ -212,15 +202,6 @@ pub fn generate_material<'a>(
                 Some(&fragment_stage_options),
             )
             .expect("failed to compile fragment shader");
-        let ray_closest_hit_stage = compiler
-            .compile_into_spirv(
-                &pbr_material_glsl,
-                shaderc::ShaderKind::ClosestHit,
-                "pbr_material.glsl",
-                "main",
-                Some(&ray_closest_hit_options),
-            )
-            .expect("failed to compile ray closest hit shader");
 
         static_scenery.materials.push(DiskMaterial {
             material_layout: static_scenery
@@ -237,7 +218,6 @@ pub fn generate_material<'a>(
             fragment_stage: Vec::from(fragment_stage.as_binary()),
             fragment_alpha_test,
             fragment_cull_flags,
-            ray_closest_hit_stage: Vec::from(ray_closest_hit_stage.as_binary()),
         });
 
         id

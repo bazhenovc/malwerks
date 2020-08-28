@@ -16,6 +16,7 @@ pub struct SharedFrameData {
     frame_data_buffer: FrameLocal<HeapAllocatedResource<vk::Buffer>>,
 
     view_projection: [f32; 16],
+    view_position: [f32; 4],
 }
 
 impl SharedFrameData {
@@ -91,6 +92,7 @@ impl SharedFrameData {
             frame_data_descriptor_set,
             frame_data_buffer,
             view_projection: Default::default(),
+            view_position: Default::default(),
         }
     }
 
@@ -105,6 +107,7 @@ impl SharedFrameData {
         let view_position = -camera.position;
         let view_projection = camera.get_view_projection();
         self.view_projection.copy_from_slice(view_projection.as_slice());
+        self.view_position[0..3].copy_from_slice(view_position.as_slice());
 
         let mut per_frame_data = PerFrameData::default();
         per_frame_data
@@ -113,7 +116,7 @@ impl SharedFrameData {
         per_frame_data
             .inverse_view_projection
             .copy_from_slice(view_projection.inversed().as_slice());
-        per_frame_data.camera_position[0..3].copy_from_slice(view_position.as_slice());
+        per_frame_data.view_position[0..3].copy_from_slice(view_position.as_slice());
         //per_frame_data
         //    .camera_orientation
         //    .copy_from_slice(camera.orientation.as_slice());
@@ -126,6 +129,10 @@ impl SharedFrameData {
 
     pub fn get_view_projection(&self) -> &[f32] {
         &self.view_projection
+    }
+
+    pub fn get_view_position(&self) -> &[f32] {
+        &self.view_position
     }
 
     pub fn get_frame_data_descriptor_set_layout(&self) -> vk::DescriptorSetLayout {
@@ -142,6 +149,6 @@ impl SharedFrameData {
 struct PerFrameData {
     pub view_projection: [f32; 16],
     pub inverse_view_projection: [f32; 16],
-    pub camera_position: [f32; 4],
+    pub view_position: [f32; 4],
     pub camera_orientation: [f32; 4],
 }

@@ -12,6 +12,8 @@ mod gltf_meshes;
 mod gltf_nodes;
 mod gltf_shared;
 
+mod global_resources;
+
 mod meshopt;
 mod texconv;
 
@@ -19,6 +21,8 @@ use gltf_images::*;
 use gltf_material_instances::*;
 use gltf_meshes::*;
 use gltf_nodes::*;
+
+use global_resources::*;
 
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(name = "import_gltf", about = "glTF import tool")]
@@ -28,9 +32,6 @@ struct CommandLineOptions {
 
     #[structopt(short = "o", long = "output")]
     output_file: Option<std::path::PathBuf>,
-
-    #[structopt(short = "g", long = "optimize_geometry")]
-    optimize_geometry: bool,
 
     #[structopt(short = "c", long = "compression_level", default_value = "9")]
     compression_level: u32,
@@ -47,6 +48,16 @@ fn import_gltf(command_line: &CommandLineOptions) -> DiskStaticScenery {
         materials: Vec::new(),
         buckets: Vec::new(),
         environment_probes: Vec::new(),
+        global_resources: DiskGlobalResources {
+            precomputed_brdf_image: 0,
+            apex_culling_compute_stage: Vec::new(),
+            skybox_vertex_stage: Vec::new(),
+            skybox_fragment_stage: Vec::new(),
+            postprocess_vertex_stage: Vec::new(),
+            postprocess_fragment_stage: Vec::new(),
+            imgui_vertex_stage: Vec::new(),
+            imgui_fragment_stage: Vec::new(),
+        },
     };
 
     let gltf = gltf::Gltf::open(&command_line.input_file).expect("failed to open gltf");
@@ -62,12 +73,12 @@ fn import_gltf(command_line: &CommandLineOptions) -> DiskStaticScenery {
         gltf.views(),
         gltf.meshes(),
         gltf.materials(),
-        command_line.optimize_geometry,
     );
     import_nodes(&mut static_scenery, primitive_remap_table, gltf.nodes());
     import_images(&mut static_scenery, &base_path, gltf.materials(), gltf.images());
     import_samplers(&mut static_scenery, gltf.samplers());
     import_probes(&mut static_scenery, &base_path);
+    import_global_resources(&mut static_scenery, &base_path);
     static_scenery
 }
 
@@ -86,7 +97,7 @@ fn main() {
     let static_scenery = import_gltf(&command_line);
 
     let output_file = if let Some(file) = command_line.output_file {
-        std::path::PathBuf::from(file)
+        file
     } else {
         std::path::Path::new(&command_line.input_file).with_extension("world")
     };

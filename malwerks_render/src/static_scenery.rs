@@ -6,6 +6,7 @@
 use malwerks_resources::*;
 use malwerks_vk::*;
 
+use crate::mesh_cluster_culling::*;
 use crate::render_pass::*;
 use crate::shared_frame_data::*;
 use crate::upload_batch::*;
@@ -30,7 +31,10 @@ pub struct StaticScenery {
     pipelines: Vec<vk::Pipeline>,
 
     buckets: Vec<RenderBucket>,
+    render_transforms: RenderTransforms,
     environment_probes: RenderEnvironmentProbes,
+
+    cluster_culling: MeshClusterCulling,
 }
 
 impl StaticScenery {
@@ -50,18 +54,16 @@ impl StaticScenery {
         static_scenery.initialize_images(&disk_scenery, command_buffer, factory, queue);
         static_scenery.initialize_environment_probes(&disk_scenery, factory);
         static_scenery.initialize_descriptor_pool(&disk_scenery, factory);
-        static_scenery.initialize_pipelines(&disk_scenery, factory, render_pass, shared_frame_data);
         static_scenery.initialize_buckets(&disk_scenery, factory);
+        static_scenery.initialize_pipelines(&disk_scenery, factory, render_pass, shared_frame_data);
+        static_scenery.initialize_mesh_cluster_culling(&disk_scenery, factory);
         static_scenery
     }
 
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
+        self.render_transforms.destroy(factory);
+        self.cluster_culling.destroy(factory);
         self.environment_probes.destroy(factory);
-        for bucket in &self.buckets {
-            for instance in &bucket.instances {
-                factory.deallocate_buffer(&instance.transform_buffer);
-            }
-        }
         for buffer in &self.buffers {
             factory.deallocate_buffer(buffer);
         }
@@ -90,6 +92,18 @@ impl StaticScenery {
         factory.destroy_descriptor_pool(self.descriptor_pool);
     }
 
+    pub fn dispatch_culling(
+        &self,
+        command_buffer: &mut CommandBuffer,
+        _frame_context: &FrameContext,
+        shared_frame_data: &SharedFrameData,
+    ) {
+        puffin::profile_function!();
+
+        self.cluster_culling
+            .dispatch(&self.buffers, command_buffer, shared_frame_data);
+    }
+
     pub fn render(
         &self,
         command_buffer: &mut CommandBuffer,
@@ -101,9 +115,8 @@ impl StaticScenery {
         // TODO: only one environment probe is supported right now
         assert_eq!(self.environment_probes.descriptor_sets.len(), 1);
 
+        let mut instance_index = 0usize;
         for bucket in &self.buckets {
-            puffin::profile_scope!("render bucket");
-
             let pipeline_layout = self.pipeline_layouts[bucket.material];
             let pipeline = self.pipelines[bucket.material];
 
@@ -115,6 +128,7 @@ impl StaticScenery {
                 shared_frame_data.get_view_projection(),
             );
 
+            let mut draw_arguments_offset = 0usize;
             for instance in &bucket.instances {
                 command_buffer.push_constants(
                     pipeline_layout,
@@ -128,6 +142,7 @@ impl StaticScenery {
                     0,
                     &[
                         *shared_frame_data.get_frame_data_descriptor_set(frame_context),
+                        self.render_transforms.descriptor_sets[instance_index],
                         self.descriptor_sets[instance.material_instance],
                         self.environment_probes.descriptor_sets[0],
                     ],
@@ -135,31 +150,21 @@ impl StaticScenery {
                 );
 
                 let mesh = &self.meshes[instance.mesh];
-                command_buffer.bind_vertex_buffers(
-                    0,
-                    &[self.buffers[mesh.vertex_buffer].0, instance.transform_buffer.0],
-                    &[0, 0],
+                command_buffer.bind_vertex_buffers(0, &[self.buffers[mesh.vertex_buffer].0], &[0]);
+                command_buffer.bind_index_buffer(self.buffers[mesh.index_buffer].0, 0, vk::IndexType::UINT16);
+                command_buffer.draw_indexed_indirect(
+                    self.buffers[bucket.draw_arguments_buffer].0,
+                    draw_arguments_offset as _,
+                    (mesh.mesh_cluster_count * instance.instance_count) as _,
+                    std::mem::size_of::<vk::DrawIndexedIndirectCommand>() as _,
                 );
-                match mesh.index_buffer {
-                    Some(index_buffer) => {
-                        command_buffer.bind_index_buffer(self.buffers[index_buffer.0].0, 0, index_buffer.1);
-                        command_buffer.draw_indexed(mesh.index_count, instance.transform_data.len() as _, 0, 0, 0);
-                    }
-                    None => {
-                        command_buffer.draw(mesh.vertex_count, instance.transform_data.len() as _, 0, 0);
-                    }
-                }
+
+                draw_arguments_offset += mesh.mesh_cluster_count
+                    * instance.instance_count
+                    * std::mem::size_of::<vk::DrawIndexedIndirectCommand>();
+                instance_index += 1;
             }
         }
-    }
-
-    pub fn get_instance_count(&self) -> usize {
-        self.buckets.iter().fold(0usize, |r, bucket| {
-            r + bucket
-                .instances
-                .iter()
-                .fold(0usize, |rr, instance| rr + instance.transform_data.len())
-        })
     }
 
     pub fn get_image(&self, id: usize) -> vk::Image {
@@ -169,34 +174,34 @@ impl StaticScenery {
     pub fn get_image_view(&self, id: usize) -> vk::ImageView {
         self.image_views[id]
     }
-}
 
-#[repr(C)]
-struct RenderBoundingBox([f32; 3], [f32; 3]);
+    pub fn debug_set_apex_culling_enabled(&mut self, enabled: bool) {
+        self.cluster_culling.debug_set_apex_culling_enabled(enabled);
+    }
+
+    pub fn debug_set_apex_culling_paused(&mut self, paused: bool) {
+        self.cluster_culling.debug_set_apex_culling_paused(paused);
+    }
+}
 
 struct RenderMesh {
     vertex_buffer: usize,
-    vertex_count: u32,
-    vertex_stride: u64,
-
-    index_buffer: Option<(usize, vk::IndexType)>,
-    index_count: u32,
-
-    bounding_box: RenderBoundingBox,
+    index_buffer: usize,
+    mesh_cluster_count: usize,
 }
 
 struct RenderInstance {
     mesh: usize,
     material_instance: usize,
     material_data: [u8; 64],
-    transform_data: Vec<[f32; 16]>,
-    _bounding_box_data: Vec<([f32; 3], [f32; 3])>,
-    transform_buffer: HeapAllocatedResource<vk::Buffer>,
+    instance_count: usize,
 }
 
 struct RenderBucket {
     material: usize,
     instances: Vec<RenderInstance>,
+    // bounding_cone_buffer: usize,
+    draw_arguments_buffer: usize,
 }
 
 #[derive(Default)]
@@ -213,6 +218,24 @@ struct RenderEnvironmentProbes {
 impl RenderEnvironmentProbes {
     fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_sampler(self.probe_sampler);
+        factory.destroy_descriptor_pool(self.descriptor_pool);
+        factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
+    }
+}
+
+#[derive(Default)]
+struct RenderTransforms {
+    descriptor_pool: vk::DescriptorPool,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+    descriptor_sets: Vec<vk::DescriptorSet>,
+    transform_buffers: Vec<HeapAllocatedResource<vk::Buffer>>,
+}
+
+impl RenderTransforms {
+    fn destroy(&mut self, factory: &mut DeviceFactory) {
+        for buffer in &self.transform_buffers {
+            factory.deallocate_buffer(buffer);
+        }
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
     }
@@ -240,7 +263,7 @@ impl StaticScenery {
             let buffer = factory.allocate_buffer(
                 &vk::BufferCreateInfo::builder()
                     .size(disk_buffer.data.len() as _)
-                    .usage(vk::BufferUsageFlags::from_raw(disk_buffer.usage_flags))
+                    .usage(vk::BufferUsageFlags::from_raw(disk_buffer.usage_flags) | vk::BufferUsageFlags::TRANSFER_DST)
                     .build(),
                 &vk_mem::AllocationCreateInfo {
                     usage: vk_mem::MemoryUsage::GpuOnly,
@@ -249,7 +272,7 @@ impl StaticScenery {
                 },
             );
             upload_batch.upload_buffer_memory(
-                vk::PipelineStageFlags::VERTEX_SHADER,
+                vk::PipelineStageFlags::ALL_COMMANDS,
                 &buffer,
                 &disk_buffer.data,
                 0,
@@ -262,23 +285,8 @@ impl StaticScenery {
         for disk_mesh in &disk_scenery.meshes {
             let mesh = RenderMesh {
                 vertex_buffer: disk_mesh.vertex_buffer,
-                vertex_count: disk_mesh.vertex_count,
-                vertex_stride: disk_mesh.vertex_stride,
-
-                index_buffer: match disk_mesh.index_buffer {
-                    Some(index_buffer) => Some((index_buffer.0, vk::IndexType::from_raw(index_buffer.1))),
-                    None => None,
-                },
-                index_count: disk_mesh.index_count,
-
-                bounding_box: {
-                    let mut min = [0.0; 3];
-                    min.copy_from_slice(&disk_mesh.bounding_box.0);
-                    let mut max = [0.0; 3];
-                    max.copy_from_slice(&disk_mesh.bounding_box.1);
-
-                    RenderBoundingBox(min, max)
-                },
+                index_buffer: disk_mesh.index_buffer,
+                mesh_cluster_count: disk_mesh.mesh_clusters.len(),
             };
             self.meshes.push(mesh);
         }
@@ -489,8 +497,8 @@ impl StaticScenery {
 
         // TODO: ensure these never reallocate
         let mut temp_stages = Vec::with_capacity(disk_scenery.materials.len() * 2);
-        let mut temp_vertex_bindings = Vec::with_capacity(disk_scenery.materials.len() * 2);
-        let mut temp_attributes = Vec::with_capacity(disk_scenery.materials.len() * (5 + 4));
+        let mut temp_vertex_bindings = Vec::with_capacity(disk_scenery.materials.len());
+        let mut temp_attributes = Vec::with_capacity(disk_scenery.materials.len() * 5);
         let mut temp_attachments = Vec::with_capacity(disk_scenery.materials.len() * 2);
         let mut temp_dynamic_state_values = Vec::with_capacity(disk_scenery.materials.len() * 2);
 
@@ -522,6 +530,7 @@ impl StaticScenery {
                 &vk::PipelineLayoutCreateInfo::builder()
                     .set_layouts(&[
                         shared_frame_data.get_frame_data_descriptor_set_layout(),
+                        self.render_transforms.descriptor_set_layout,
                         self.descriptor_set_layouts[disk_material.material_layout],
                         self.environment_probes.descriptor_set_layout,
                     ])
@@ -552,16 +561,16 @@ impl StaticScenery {
                 );
                 last_attribute_location = last_attribute_location.max(format.1);
             }
-            for matrix_attribute in 0..4 {
-                temp_attributes.push(
-                    vk::VertexInputAttributeDescription::builder()
-                        .location(last_attribute_location + matrix_attribute + 1)
-                        .binding(1)
-                        .format(vk::Format::R32G32B32A32_SFLOAT)
-                        .offset(matrix_attribute * std::mem::size_of::<[f32; 4]>() as u32)
-                        .build(),
-                );
-            }
+            // for matrix_attribute in 0..4 {
+            //     temp_attributes.push(
+            //         vk::VertexInputAttributeDescription::builder()
+            //             .location(last_attribute_location + matrix_attribute + 1)
+            //             .binding(1)
+            //             .format(vk::Format::R32G32B32A32_SFLOAT)
+            //             .offset(matrix_attribute * std::mem::size_of::<[f32; 4]>() as u32)
+            //             .build(),
+            //     );
+            // }
 
             let shader_stages_start = temp_stages.len();
             temp_stages.push(
@@ -587,13 +596,13 @@ impl StaticScenery {
                     .input_rate(vk::VertexInputRate::VERTEX)
                     .build(),
             );
-            temp_vertex_bindings.push(
-                vk::VertexInputBindingDescription::builder()
-                    .binding(1)
-                    .stride(std::mem::size_of::<[f32; 16]>() as _)
-                    .input_rate(vk::VertexInputRate::INSTANCE)
-                    .build(),
-            );
+            // temp_vertex_bindings.push(
+            //     vk::VertexInputBindingDescription::builder()
+            //         .binding(1)
+            //         .stride(std::mem::size_of::<[f32; 16]>() as _)
+            //         .input_rate(vk::VertexInputRate::INSTANCE)
+            //         .build(),
+            // );
 
             let states_start = temp_vertex_input_states.len();
             temp_vertex_input_states.push(
@@ -694,30 +703,36 @@ impl StaticScenery {
     }
 
     fn initialize_buckets(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut DeviceFactory) {
+        let mut transform_buffers = Vec::with_capacity(disk_scenery.buckets.len());
+        let mut render_instance_count = 0;
+
         for disk_bucket in &disk_scenery.buckets {
+            let mut transform_buffer_size = 0;
+            for disk_instance in &disk_bucket.instances {
+                transform_buffer_size += disk_instance.transforms.len() * std::mem::size_of::<f32>() * 16;
+            }
+
+            let transform_buffer = factory.allocate_buffer(
+                &vk::BufferCreateInfo::builder()
+                    .size(transform_buffer_size as _)
+                    .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
+                    .build(),
+                &vk_mem::AllocationCreateInfo {
+                    usage: vk_mem::MemoryUsage::CpuToGpu,
+                    ..Default::default()
+                },
+            );
+            let mut transform_memory = factory.map_allocation_memory(&transform_buffer);
+
             let material = disk_bucket.material;
             let mut instances = Vec::new();
             for disk_instance in &disk_bucket.instances {
                 let mesh = disk_instance.mesh;
                 let material_instance = disk_instance.material_instance;
+                let instance_count = disk_instance.transforms.len();
 
-                let transform_data = disk_instance.transforms.clone();
-                let transform_buffer = factory.allocate_buffer(
-                    &vk::BufferCreateInfo::builder()
-                        .size((transform_data.len() * std::mem::size_of::<f32>() * 16) as _)
-                        .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
-                        .build(),
-                    &vk_mem::AllocationCreateInfo {
-                        usage: vk_mem::MemoryUsage::CpuToGpu,
-                        ..Default::default()
-                    },
-                );
-
-                let transform_memory = factory.map_allocation_memory(&transform_buffer);
-                copy_to_mapped_memory(&transform_data, transform_memory);
-                factory.unmap_allocation_memory(&transform_buffer);
-
-                let _bounding_box_data = disk_instance.bounding_boxes.clone();
+                copy_to_mapped_memory(&disk_instance.transforms, transform_memory);
+                transform_memory = unsafe { transform_memory.add(instance_count * std::mem::size_of::<f32>() * 16) };
 
                 let mut material_data = [0u8; 64];
                 {
@@ -731,14 +746,95 @@ impl StaticScenery {
                     mesh,
                     material_instance,
                     material_data,
-                    transform_data,
-                    _bounding_box_data,
-                    transform_buffer,
+                    instance_count,
                 });
+                render_instance_count += 1;
             }
 
-            self.buckets.push(RenderBucket { material, instances });
+            factory.unmap_allocation_memory(&transform_buffer);
+            transform_buffers.push(transform_buffer);
+
+            // let bounding_cone_buffer = disk_bucket.bounding_cone_buffer;
+            let draw_arguments_buffer = disk_bucket.draw_arguments_buffer;
+
+            self.buckets.push(RenderBucket {
+                material,
+                instances,
+                // bounding_cone_buffer,
+                draw_arguments_buffer,
+            });
         }
+
+        let descriptor_pool = factory.create_descriptor_pool(
+            &vk::DescriptorPoolCreateInfo::builder()
+                .max_sets(render_instance_count as _)
+                .pool_sizes(&[vk::DescriptorPoolSize::builder()
+                    .ty(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+                    .build()])
+                .build(),
+        );
+        let descriptor_set_layout = factory.create_descriptor_set_layout(
+            &vk::DescriptorSetLayoutCreateInfo::builder()
+                .bindings(&[vk::DescriptorSetLayoutBinding::builder()
+                    .binding(0)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .build()])
+                .build(),
+        );
+        let temp_per_descriptor_layouts = vec![descriptor_set_layout; render_instance_count];
+        let descriptor_sets = factory.allocate_descriptor_sets(
+            &vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(descriptor_pool)
+                .set_layouts(&temp_per_descriptor_layouts)
+                .build(),
+        );
+
+        let mut temp_write_infos = Vec::with_capacity(render_instance_count);
+        let mut descriptor_writes = Vec::with_capacity(render_instance_count);
+        {
+            let mut current_transform_buffer = 0;
+            let mut current_descriptor_set = 0;
+
+            #[allow(clippy::explicit_counter_loop)] // Buffer allocation strategy might change in the future
+            for disk_bucket in &disk_scenery.buckets {
+                let mut current_transform_offset = 0;
+                for disk_instance in &disk_bucket.instances {
+                    let buffer_range = disk_instance.transforms.len() * std::mem::size_of::<f32>() * 16;
+
+                    let current_write_info = temp_write_infos.len();
+                    temp_write_infos.push(
+                        vk::DescriptorBufferInfo::builder()
+                            .buffer(transform_buffers[current_transform_buffer].0)
+                            .offset(current_transform_offset as _)
+                            .range(buffer_range as _)
+                            .build(),
+                    );
+
+                    descriptor_writes.push(
+                        vk::WriteDescriptorSet::builder()
+                            .dst_set(descriptor_sets[current_descriptor_set])
+                            .dst_binding(0)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(&temp_write_infos[current_write_info..current_write_info + 1])
+                            .build(),
+                    );
+                    current_transform_offset += buffer_range;
+                    current_descriptor_set += 1;
+                }
+                current_transform_buffer += 1;
+            }
+        }
+        factory.update_descriptor_sets(&descriptor_writes, &[]);
+
+        self.render_transforms = RenderTransforms {
+            descriptor_pool,
+            descriptor_set_layout,
+            descriptor_sets,
+            transform_buffers,
+        };
     }
 
     fn initialize_environment_probes(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut DeviceFactory) {
@@ -828,7 +924,7 @@ impl StaticScenery {
                 temp_writes,
                 2,
                 probe_id,
-                disk_probe.precomputed_brdf_image
+                disk_scenery.global_resources.precomputed_brdf_image
             );
         }
 
@@ -842,151 +938,8 @@ impl StaticScenery {
             descriptor_sets,
         };
     }
-}
 
-impl StaticScenery {
-    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
-        let mut geometries = Vec::with_capacity(self.meshes.len());
-        for mesh in &self.meshes {
-            let (index_buffer, index_format) = match mesh.index_buffer {
-                Some(buffer) => (self.buffers[buffer.0].0, buffer.1),
-                None => (vk::Buffer::null(), vk::IndexType::NONE_NV),
-            };
-            geometries.push(
-                vk::GeometryNV::builder()
-                    .flags(vk::GeometryFlagsNV::OPAQUE_NV)
-                    .geometry_type(vk::GeometryTypeNV::TRIANGLES_NV)
-                    .geometry(
-                        vk::GeometryDataNV::builder()
-                            .triangles(
-                                vk::GeometryTrianglesNV::builder()
-                                    .vertex_data(self.buffers[mesh.vertex_buffer].0)
-                                    .vertex_offset(0)
-                                    .vertex_count(mesh.vertex_count)
-                                    .vertex_stride(mesh.vertex_stride)
-                                    .vertex_format(vk::Format::R32G32B32_SFLOAT)
-                                    .index_data(index_buffer)
-                                    .index_offset(0)
-                                    .index_count(mesh.index_count)
-                                    .index_type(index_format)
-                                    .transform_data(vk::Buffer::null())
-                                    .transform_offset(0)
-                                    .build(),
-                            )
-                            .build(),
-                    )
-                    .build(),
-            );
-        }
-        geometries
-    }
-
-    pub fn create_instances_nv(
-        &self,
-        instance_mask: u32,
-        shader_binding_table_offset: u32,
-        flags: vk::GeometryInstanceFlagsNV,
-        bottom_level_acceleration_structure: &[u64],
-    ) -> Vec<vk::AccelerationStructureInstanceNV> {
-        let num_instances = self.get_instance_count();
-        let mut instances = Vec::with_capacity(num_instances);
-        for bucket in &self.buckets {
-            for instance in &bucket.instances {
-                for instance_transform in &instance.transform_data {
-                    let instance_id = instances.len() as u32;
-                    let acceleration_structure_reference = bottom_level_acceleration_structure[instance.mesh];
-
-                    let transform = vk::TransformMatrixKHR {
-                        matrix: {
-                            let mut matrix = [0.0; 12];
-                            matrix[0..3].copy_from_slice(&instance_transform[0..3]);
-                            matrix[3..6].copy_from_slice(&instance_transform[3..6]);
-                            matrix[6..9].copy_from_slice(&instance_transform[6..9]);
-                            matrix[9..12].copy_from_slice(&instance_transform[9..12]);
-
-                            matrix
-                        },
-                    };
-
-                    let instance_custom_index_and_mask = (instance_id & 0x00ff_ffff) | (instance_mask << 24);
-                    let instance_shader_binding_table_record_offset_and_flags =
-                        (shader_binding_table_offset & 0x00ff_ffff) | ((flags.as_raw() as u32) << 24);
-
-                    instances.push(vk::AccelerationStructureInstanceNV {
-                        transform,
-                        instance_custom_index_and_mask,
-                        instance_shader_binding_table_record_offset_and_flags,
-                        acceleration_structure_reference,
-                    });
-                }
-            }
-        }
-        instances
-    }
-
-    pub fn create_aabbs_nv(
-        &self,
-        command_buffer: &mut CommandBuffer,
-        factory: &mut DeviceFactory,
-        queue: &mut DeviceQueue,
-    ) -> (Vec<vk::GeometryNV>, HeapAllocatedResource<vk::Buffer>) {
-        let mut upload_batch = UploadBatch::new(command_buffer);
-
-        let aabb_stride = std::mem::size_of::<([f32; 3], [f32; 3])>();
-        let aabb_buffer = factory.allocate_buffer(
-            &vk::BufferCreateInfo::builder()
-                .size((aabb_stride * self.meshes.len()) as _)
-                .usage(vk::BufferUsageFlags::RAY_TRACING_NV | vk::BufferUsageFlags::TRANSFER_DST)
-                .build(),
-            &vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::GpuOnly,
-                required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                ..Default::default()
-            },
-        );
-
-        let mut buffer_offset = 0;
-        let mut aabbs = Vec::with_capacity(self.meshes.len());
-        for mesh in &self.meshes {
-            let buffer_memory = {
-                let mut slice = [0.0; 6];
-                slice[0..3].copy_from_slice(&mesh.bounding_box.0);
-                slice[3..6].copy_from_slice(&mesh.bounding_box.1);
-
-                unsafe {
-                    std::slice::from_raw_parts(slice.as_ptr() as *const u8, slice.len() * std::mem::size_of::<f32>())
-                }
-            };
-            upload_batch.upload_buffer_memory(
-                vk::PipelineStageFlags::RAY_TRACING_SHADER_NV,
-                &aabb_buffer,
-                &buffer_memory,
-                buffer_offset,
-                factory,
-            );
-
-            aabbs.push(
-                vk::GeometryNV::builder()
-                    .geometry_type(vk::GeometryTypeNV::AABBS_NV)
-                    .geometry(
-                        vk::GeometryDataNV::builder()
-                            .aabbs(
-                                vk::GeometryAABBNV::builder()
-                                    .aabb_data(aabb_buffer.0)
-                                    .num_aab_bs(1)
-                                    .stride(aabb_stride as _)
-                                    .offset(buffer_offset as _)
-                                    .build(),
-                            )
-                            .build(),
-                    )
-                    .build(),
-            );
-
-            buffer_offset += aabb_stride;
-        }
-
-        upload_batch.flush(factory, queue);
-        (aabbs, aabb_buffer)
+    fn initialize_mesh_cluster_culling(&mut self, disk_scenery: &DiskStaticScenery, factory: &mut DeviceFactory) {
+        self.cluster_culling = MeshClusterCulling::new(disk_scenery, &self.buffers, factory, self.pipeline_cache);
     }
 }

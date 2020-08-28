@@ -3,6 +3,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_resources::*;
 use malwerks_vk::*;
 
 use crate::forward_pass::*;
@@ -25,8 +26,7 @@ pub struct PostProcess {
 
 impl PostProcess {
     pub fn new<T>(
-        vert_code: &[u32],
-        frag_code: &[u32],
+        global_resources: &DiskGlobalResources,
         source_pass: &ForwardPass, // TODO: make it a generic render pass
         destination_pass: &T,
         factory: &mut DeviceFactory,
@@ -34,8 +34,16 @@ impl PostProcess {
     where
         T: RenderPass,
     {
-        let vert_module = factory.create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(vert_code).build());
-        let frag_module = factory.create_shader_module(&vk::ShaderModuleCreateInfo::builder().code(frag_code).build());
+        let vert_module = factory.create_shader_module(
+            &vk::ShaderModuleCreateInfo::builder()
+                .code(&global_resources.postprocess_vertex_stage)
+                .build(),
+        );
+        let frag_module = factory.create_shader_module(
+            &vk::ShaderModuleCreateInfo::builder()
+                .code(&global_resources.postprocess_fragment_stage)
+                .build(),
+        );
 
         let entry_name = std::ffi::CString::new("main").expect("failed to allocate entry name");
         let post_process_vert = vk::PipelineShaderStageCreateInfo::builder()

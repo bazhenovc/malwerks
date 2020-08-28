@@ -4,7 +4,6 @@ members = [
     "malwerks_resources",
     "malwerks_render",
     "malwerks_tools",
-    "malwerks_light_baker",
     "malwerks_playground",
 
     "malwerks_dds",

@@ -16,6 +16,7 @@ use crate::static_scenery::*;
 pub struct RenderWorld {
     forward_pass: ForwardPass,
     static_scenery: StaticScenery,
+    global_resources: DiskGlobalResources,
     sky_box: SkyBox,
 
     shared_frame_data: SharedFrameData,
@@ -66,11 +67,13 @@ impl RenderWorld {
             &forward_pass,
             factory,
         );
+        let global_resources = disk_scenery.global_resources.clone();
         Self {
             forward_pass,
             static_scenery,
             sky_box,
             shared_frame_data,
+            global_resources,
         }
     }
 
@@ -78,6 +81,10 @@ impl RenderWorld {
         self.shared_frame_data.destroy(factory);
         self.static_scenery.destroy(factory);
         self.forward_pass.destroy(factory);
+    }
+
+    pub fn get_global_resources(&self) -> &DiskGlobalResources {
+        &self.global_resources
     }
 
     pub fn get_render_pass(&self) -> &ForwardPass {
@@ -106,8 +113,13 @@ impl RenderWorld {
             },
         };
         self.shared_frame_data.update(frame_context, camera, factory);
-        self.forward_pass.begin(frame_context, device, factory, screen_area);
 
+        self.forward_pass.acquire_frame(frame_context, device, factory);
+        let command_buffer = self.forward_pass.get_command_buffer(frame_context);
+        self.static_scenery
+            .dispatch_culling(command_buffer, frame_context, &self.shared_frame_data);
+
+        self.forward_pass.begin(frame_context, screen_area);
         // let depth_image = self.forward_pass.get_depth_image();
         let color_image = self.forward_pass.get_color_image();
         let command_buffer = self.forward_pass.get_command_buffer(frame_context);
@@ -133,7 +145,7 @@ impl RenderWorld {
         let command_buffer = self.forward_pass.get_command_buffer(frame_context);
         command_buffer.pipeline_barrier(
             vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
             None,
             &[],
             &[],
@@ -179,50 +191,23 @@ impl RenderWorld {
         self.forward_pass.submit_commands(frame_context, queue);
     }
 
-    pub fn get_instance_count(&self) -> usize {
-        self.static_scenery.get_instance_count()
-    }
-
     pub fn try_get_oldest_timestamps(
         &self,
         frame_context: &FrameContext,
         factory: &mut DeviceFactory,
     ) -> [(&'static str, [u64; 2]); 1] {
         let mut timestamps = [("ForwardPass", [0u64; 2])];
-        match self.forward_pass.try_get_oldest_timestamp(frame_context, factory) {
-            Some(timestamp) => timestamps[0].1 = timestamp,
-            None => {}
+        if let Some(timestamp) = self.forward_pass.try_get_oldest_timestamp(frame_context, factory) {
+            timestamps[0].1 = timestamp;
         }
         timestamps
     }
-}
 
-impl RenderWorld {
-    pub fn create_instances_nv(
-        &self,
-        instance_mask: u32,
-        shader_binding_table_offset: u32,
-        flags: vk::GeometryInstanceFlagsNV,
-        bottom_level_acceleration_structure: &[u64],
-    ) -> Vec<vk::AccelerationStructureInstanceNV> {
-        self.static_scenery.create_instances_nv(
-            instance_mask,
-            shader_binding_table_offset,
-            flags,
-            bottom_level_acceleration_structure,
-        )
+    pub fn debug_set_apex_culling_enabled(&mut self, enabled: bool) {
+        self.static_scenery.debug_set_apex_culling_enabled(enabled);
     }
 
-    pub fn create_aabbs_nv(
-        &self,
-        command_buffer: &mut CommandBuffer,
-        factory: &mut DeviceFactory,
-        queue: &mut DeviceQueue,
-    ) -> (Vec<vk::GeometryNV>, HeapAllocatedResource<vk::Buffer>) {
-        self.static_scenery.create_aabbs_nv(command_buffer, factory, queue)
-    }
-
-    pub fn create_geometries_nv(&self) -> Vec<vk::GeometryNV> {
-        self.static_scenery.create_geometries_nv()
+    pub fn debug_set_apex_culling_paused(&mut self, paused: bool) {
+        self.static_scenery.debug_set_apex_culling_paused(paused);
     }
 }

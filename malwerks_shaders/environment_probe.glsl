@@ -82,18 +82,3 @@ void main() {
     imageStore(OutputImage, ivec2(gl_LaunchIDNV.xy), PrimaryRay.color_and_distance);
 }
 #endif
-
-#ifdef RAY_MISS_STAGE
-struct PrimaryRayPayload {
-    vec4 color_and_distance;
-    // vec4 normal_and_id;
-};
-
-layout (location = 0) rayPayloadNV PrimaryRayPayload PrimaryRay;
-
-void main()
-{
-    PrimaryRay.color_and_distance = vec4(0.5, 0.5, 0.5, 0.5);
-    // PrimaryRay.normal_and_id = vec4(1.0, 0.0, 0.0, intBitsToFloat(0));
-}
-#endif

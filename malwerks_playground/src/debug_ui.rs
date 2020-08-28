@@ -12,7 +12,7 @@ pub fn show_debug_window<'a>(
     _window: &winit::window::Window,
     gilrs: &gilrs::Gilrs,
     camera_state: &mut CameraState,
-    _render_world: &mut RenderWorld,
+    render_world: &mut RenderWorld,
     average_frame_time: f32,
     average_fps: f32,
 ) {
@@ -71,6 +71,22 @@ pub fn show_debug_window<'a>(
                     for (_id, gamepad) in gilrs.gamepads() {
                         ui.text(ImString::from(format!("{} {:?}", gamepad.name(), gamepad.power_info())));
                     }
+                }
+            }
+
+            // cluster culling
+            if CollapsingHeader::new(im_str!("Mesh cluster culling"))
+                .default_open(true)
+                .build(ui)
+            {
+                static mut APEX_CULLING_ENABLED: bool = true;
+                if ui.checkbox(im_str!("Apex culling enabled"), unsafe { &mut APEX_CULLING_ENABLED }) {
+                    render_world.debug_set_apex_culling_enabled(unsafe { APEX_CULLING_ENABLED });
+                }
+
+                static mut APEX_CULLING_PAUSED: bool = false;
+                if ui.checkbox(im_str!("Apex culling paused"), unsafe { &mut APEX_CULLING_PAUSED }) {
+                    render_world.debug_set_apex_culling_paused(unsafe { APEX_CULLING_PAUSED });
                 }
             }
         });

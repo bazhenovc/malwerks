@@ -5,36 +5,30 @@
 
 use ultraviolet as utv;
 
-pub struct BoundingBox {
-    pub min: utv::vec::Vec3,
-    pub max: utv::vec::Vec3,
+pub struct BoundingCone {
+    pub cone_apex: utv::vec::Vec3,
+    pub cone_axis: utv::vec::Vec3,
+    pub cone_cutoff: f32,
 }
 
-impl BoundingBox {
-    pub fn new_empty() -> Self {
+impl BoundingCone {
+    pub fn get_transformed(&self, matrix: &utv::mat::Mat4) -> BoundingCone {
+        let cone_apex = utv::vec::Vec3::from(
+            *matrix * utv::vec::Vec4::new(self.cone_apex.x, self.cone_apex.y, self.cone_apex.z, 1.0),
+        );
+        let cone_axis = utv::vec::Vec3::from(
+            *matrix * utv::vec::Vec4::new(self.cone_axis.x, self.cone_axis.y, self.cone_axis.z, 0.0),
+        );
+        let cone_cutoff = self.cone_cutoff;
         Self {
-            min: utv::vec::Vec3::new(std::f32::MAX, std::f32::MAX, std::f32::MAX),
-            max: utv::vec::Vec3::new(-std::f32::MAX, -std::f32::MAX, -std::f32::MAX),
-        }
-    }
-
-    pub fn insert_point(&mut self, pt: utv::vec::Vec3) {
-        self.min = self.min.min_by_component(pt);
-        self.max = self.max.max_by_component(pt);
-    }
-
-    pub fn get_transformed(&self, mat: &utv::mat::Mat4) -> Self {
-        let min = utv::vec::Vec3::from(*mat * utv::vec::Vec4::new(self.min.x, self.min.y, self.min.z, 1.0));
-        let max = utv::vec::Vec3::from(*mat * utv::vec::Vec4::new(self.max.x, self.max.y, self.max.z, 1.0));
-
-        Self {
-            min: min.min_by_component(max),
-            max: max.max_by_component(min),
+            cone_apex,
+            cone_axis,
+            cone_cutoff,
         }
     }
 }
 
 pub struct PrimitiveRemap {
     pub mesh_id: usize,
-    pub primitives: Vec<(usize, usize, usize, BoundingBox)>, // mesh_index, material_id, material_instance_id
+    pub primitives: Vec<(usize, usize, usize, Vec<BoundingCone>)>, // mesh_index, material_id, material_instance_id
 }

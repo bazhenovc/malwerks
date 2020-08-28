@@ -99,7 +99,7 @@ impl CompressibleStorage for Vec<u8> {
             .level(9)
             .build(Vec::with_capacity(self.capacity()))
             .expect("failed to create lz4 encoder");
-        encoder.write(self.as_slice()).expect("failed to write lz4 stream");
+        let _ = encoder.write(self.as_slice()).expect("failed to write lz4 stream");
         let (output, result) = encoder.finish();
         result.expect("failed to compress lz4 data");
         output

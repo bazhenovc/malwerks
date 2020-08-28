@@ -35,16 +35,14 @@ impl SkyBox {
         forward_pass: &ForwardPass,
         factory: &mut DeviceFactory,
     ) -> Self {
-        let disk_probe = &disk_scenery.environment_probes[0];
-
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&disk_probe.skybox_vertex_stage)
+                .code(&disk_scenery.global_resources.skybox_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&disk_probe.skybox_fragment_stage)
+                .code(&disk_scenery.global_resources.skybox_fragment_stage)
                 .build(),
         );
 
@@ -69,6 +67,7 @@ impl SkyBox {
                 .build(),
         );
 
+        let disk_probe = &disk_scenery.environment_probes[0];
         let descriptor_pool = factory.create_descriptor_pool(
             &vk::DescriptorPoolCreateInfo::builder().max_sets(1).pool_sizes(&[
                 vk::DescriptorPoolSize::builder()

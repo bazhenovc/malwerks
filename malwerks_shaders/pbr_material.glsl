@@ -5,11 +5,6 @@
 
 #version 460 core
 
-#ifdef RAY_TRACING
-#extension GL_NV_ray_tracing:enable
-#extension GL_EXT_nonuniform_qualifier:enable
-#endif
-
 #include "generated://shader_prelude.glsl"
 
 layout (std140, set = 0, binding = 0) uniform PerFrame {
@@ -28,11 +23,9 @@ void main() {
     vec4 position = generated_vertex_shader();
     gl_Position = ViewProjection * position;
 }
-
 #endif
 
 #ifdef FRAGMENT_STAGE
-
 layout (push_constant) uniform PC_MaterialInstance {
     layout (offset = 64) vec4 base_color_factor;
     layout (offset = 80) vec4 metallic_roughness_discard_unused;
@@ -40,9 +33,9 @@ layout (push_constant) uniform PC_MaterialInstance {
     layout (offset = 112) vec4 unused;
 };
 
-layout (set = 2, binding = 0) uniform samplerCube IemTexture;
-layout (set = 2, binding = 1) uniform samplerCube PmremTexture;
-layout (set = 2, binding = 2) uniform sampler2D PrecomputedBrdf;
+layout (set = 3, binding = 0) uniform samplerCube IemTexture;
+layout (set = 3, binding = 1) uniform samplerCube PmremTexture;
+layout (set = 3, binding = 2) uniform sampler2D PrecomputedBrdf;
 
 vec4 sample_base_color() {
     #ifdef HAS_BaseColorTexture
@@ -176,28 +169,4 @@ void main() {
     vec3 final_color = ibl + emissive;
     Target0 = vec4(final_color, 1.0);
 }
-
-#endif
-
-#ifdef RAY_CLOSEST_HIT_STAGE
-layout (set = 0, binding = 0) uniform sampler2D MaterialTextures[];
-
-// layout (set = 1, binding = 0) uniform samplerCube IemTexture;
-// layout (set = 1, binding = 1) uniform samplerCube PmremTexture;
-// layout (set = 1, binding = 2) uniform sampler2D PrecomputedBrdf;
-
-struct PrimaryRayPayload {
-    vec4 color_and_distance;
-    // vec4 normal_and_id;
-};
-
-layout (location = 0) rayPayloadNV PrimaryRayPayload PrimaryRay;
-hitAttributeNV vec3 HitAttributes;
-
-void main() {
-    vec3 barycentrics = vec3(1.0 - HitAttributes.x - HitAttributes.y, HitAttributes.x, HitAttributes.y);
-    PrimaryRay.color_and_distance = vec4(barycentrics, gl_HitTNV);
-    // PrimaryRay.normal_and_id = vec4(0.0, 0.0, 1.0, intBitsToFloat(0));
-}
-
 #endif

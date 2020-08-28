@@ -5,6 +5,7 @@
 
 use puffin::*;
 
+#[derive(Default)]
 pub struct GpuProfiler {
     stream: Stream,
     depth: usize,
@@ -12,14 +13,6 @@ pub struct GpuProfiler {
 }
 
 impl GpuProfiler {
-    pub fn new() -> Self {
-        Self {
-            stream: Stream::default(),
-            depth: 0,
-            gpu_time_offset: 0,
-        }
-    }
-
     pub fn begin_scope(&mut self, name: &'static str, timestamp_start: u64) -> usize {
         if self.gpu_time_offset == 0 {
             self.gpu_time_offset = (timestamp_start as i64) - puffin::now_ns();

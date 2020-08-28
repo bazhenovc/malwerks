@@ -14,10 +14,12 @@ mod forward_pass;
 mod gpu_profiler;
 mod post_process;
 mod render_world;
-mod shared_frame_data;
 mod sky_box;
 mod static_scenery;
 mod upload_batch;
+
+mod mesh_cluster_culling;
+mod shared_frame_data;
 
 pub use camera::*;
 pub use forward_pass::*;
@@ -25,25 +27,15 @@ pub use gpu_profiler::*;
 pub use post_process::*;
 pub use render_pass::*;
 pub use render_world::*;
-pub use shared_frame_data::*;
 pub use sky_box::*;
 pub use static_scenery::*;
 pub use upload_batch::*;
 
+pub use malwerks_resources::DiskGlobalResources;
 pub use malwerks_vk::*;
 
 pub use puffin;
 pub use ultraviolet as utv;
-
-#[macro_export]
-macro_rules! include_spirv {
-    ($path: expr) => {
-        unsafe {
-            let bytes = include_bytes!(concat!(env!("OUT_DIR"), $path));
-            std::slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4)
-        }
-    };
-}
 
 #[cfg(test)]
 mod test_render_passes;

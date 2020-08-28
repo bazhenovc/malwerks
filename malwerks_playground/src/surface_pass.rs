@@ -127,18 +127,16 @@ impl SurfacePass {
 }
 
 impl RenderPass for SurfacePass {
-    fn begin(
-        &mut self,
-        frame_context: &FrameContext,
-        device: &mut Device,
-        factory: &mut DeviceFactory,
-        render_area: vk::Rect2D,
-    ) {
+    fn acquire_frame(&mut self, frame_context: &FrameContext, device: &mut Device, factory: &mut DeviceFactory) {
+        self.base_pass.acquire_frame(frame_context, device, factory);
+    }
+
+    fn begin(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D) {
         self.add_wait_condition(
             self.get_image_ready_semaphore(frame_context),
             vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
         );
-        self.base_pass.begin(frame_context, device, factory, render_area);
+        self.base_pass.begin(frame_context, render_area);
     }
 
     fn end(&mut self, frame_context: &FrameContext) {
