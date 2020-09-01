@@ -216,6 +216,7 @@ impl Device {
             let mut enabled_device_features = vk::PhysicalDeviceFeatures2::default();
             enabled_device_features.features.texture_compression_bc = vk::TRUE;
             enabled_device_features.features.multi_draw_indirect = vk::TRUE;
+            enabled_device_features.features.fragment_stores_and_atomics = vk::TRUE;
 
             let queue_priorities = [1.0];
             let queue_create_info = [vk::DeviceQueueCreateInfo::builder()
@@ -223,7 +224,8 @@ impl Device {
                 .queue_priorities(&queue_priorities)
                 .build()];
 
-            let mut device_extension_names = Vec::with_capacity(6);
+            let mut device_extension_names = Vec::with_capacity(7);
+            device_extension_names.push(vk::KhrDrawIndirectCountFn::name().as_ptr());
 
             // TODO: enable uint8 index format when AMD starts supporting it
             // device_extension_names.push(vk::ExtIndexTypeUint8Fn::name().as_ptr());
@@ -278,10 +280,18 @@ impl Device {
 
         // TODO: this is ugly and super unsafe, needs a rework at some point
         unsafe {
+            let draw_indirect_count = vk::KhrDrawIndirectCountFn::load(|name| {
+                std::mem::transmute(instance.get_device_proc_addr(device.handle(), name.as_ptr()))
+            });
             let ray_tracing_nv = vk::NvRayTracingFn::load(|name| {
                 std::mem::transmute(instance.get_device_proc_addr(device.handle(), name.as_ptr()))
             });
-            ash_static_init(device.fp_v1_0().clone(), device.fp_v1_1().clone(), ray_tracing_nv);
+            ash_static_init(
+                device.fp_v1_0().clone(),
+                device.fp_v1_1().clone(),
+                draw_indirect_count,
+                ray_tracing_nv,
+            );
         }
         let graphics_queue = unsafe { device.get_device_queue(graphics_queue_index, 0) };
 

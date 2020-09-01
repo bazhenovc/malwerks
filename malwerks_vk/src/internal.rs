@@ -8,6 +8,7 @@ use ash::vk;
 pub(crate) struct AshStatic {
     pub fp_10: vk::DeviceFnV1_0,
     pub fp_11: vk::DeviceFnV1_1,
+    pub draw_indirect_count: vk::KhrDrawIndirectCountFn,
     pub ray_tracing_nv: vk::NvRayTracingFn,
 }
 
@@ -21,6 +22,7 @@ pub(crate) unsafe fn ash_static() -> &'static AshStatic {
 pub(crate) unsafe fn ash_static_init(
     fp_10: vk::DeviceFnV1_0,
     fp_11: vk::DeviceFnV1_1,
+    draw_indirect_count: vk::KhrDrawIndirectCountFn,
     ray_tracing_nv: vk::NvRayTracingFn,
 ) {
     match ASH_STATIC {
@@ -28,6 +30,7 @@ pub(crate) unsafe fn ash_static_init(
             ASH_STATIC = Some(AshStatic {
                 fp_10,
                 fp_11,
+                draw_indirect_count,
                 ray_tracing_nv,
             });
         }

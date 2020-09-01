@@ -19,6 +19,8 @@ mod static_scenery;
 mod upload_batch;
 
 mod mesh_cluster_culling;
+mod occluder_pass;
+mod occluder_resolve;
 mod shared_frame_data;
 
 pub use camera::*;

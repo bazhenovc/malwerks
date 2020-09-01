@@ -74,13 +74,15 @@ pub struct DiskBoundingCone {
 #[derive(Serialize, Deserialize)]
 pub struct DiskMeshCluster {
     pub vertex_count: u16,
-    pub index_count: u16,
+    pub draw_index_count: u16,
+    pub occluder_index_count: u16,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskStaticMesh {
     pub vertex_buffer: usize,
-    pub index_buffer: usize,
+    pub draw_index_buffer: usize,
+    pub occluder_index_buffer: usize,
     pub mesh_clusters: Vec<DiskMeshCluster>,
     pub bounding_cones: Vec<DiskBoundingCone>,
 }
@@ -89,16 +91,20 @@ pub struct DiskStaticMesh {
 pub struct DiskRenderInstance {
     pub mesh: usize,
     pub material_instance: usize,
-    pub transforms: Vec<[f32; 16]>,
+
+    pub bounding_cone_buffer: usize,
+    pub occluder_arguments_buffer: usize,
+    pub draw_arguments_buffer: usize,
+
+    pub total_instance_count: usize,
+    pub total_draw_count: usize,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct DiskRenderBucket {
     pub material: usize,
     pub instances: Vec<DiskRenderInstance>,
-    pub bounding_cone_buffer: usize,
-    pub draw_arguments_buffer: usize,
-    pub draw_arguments_count: usize,
+    pub instance_transform_buffer: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -108,11 +114,21 @@ pub struct DiskEnvironmentProbe {
     pub pmrem_image: usize,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct DiskGlobalResources {
     pub precomputed_brdf_image: usize,
 
     pub apex_culling_compute_stage: Vec<u32>,
+    pub occlusion_culling_compute_stage: Vec<u32>,
+    pub count_to_dispatch_compute_stage: Vec<u32>,
+
+    pub empty_fragment_stage: Vec<u32>,
+
+    pub occluder_material_vertex_stage: Vec<u32>,
+    pub occluder_material_fragment_stage: Vec<u32>,
+
+    pub occluder_resolve_vertex_stage: Vec<u32>,
+    pub occluder_resolve_fragment_stage: Vec<u32>,
 
     pub skybox_vertex_stage: Vec<u32>,
     pub skybox_fragment_stage: Vec<u32>,

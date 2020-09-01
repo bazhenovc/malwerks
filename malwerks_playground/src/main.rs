@@ -278,7 +278,7 @@ impl Game {
                 self.surface_pass.add_dependency(
                     &frame_context,
                     self.render_world.get_render_pass(),
-                    vk::PipelineStageFlags::ALL_GRAPHICS,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
                 );
 
                 // render world

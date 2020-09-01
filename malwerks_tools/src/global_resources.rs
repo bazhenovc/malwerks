@@ -88,7 +88,43 @@ fn import_global_shaders(global_resources: &mut DiskGlobalResources, base_path: 
             .join("malwerks_shaders")
             .join("apex_culling.glsl"),
     )
-    .expect("failed to open environment_probe.glsl");
+    .expect("failed to open apex_culling.glsl");
+    let occlusion_culling_glsl = std::fs::read_to_string(
+        base_path
+            .join("..")
+            .join("..")
+            .join("malwerks_shaders")
+            .join("occlusion_culling.glsl"),
+    )
+    .expect("failed to open occlusion_culling.glsl");
+    let count_to_dispatch_glsl = std::fs::read_to_string(
+        base_path
+            .join("..")
+            .join("..")
+            .join("malwerks_shaders")
+            .join("count_to_dispatch.glsl"),
+    )
+    .expect("failed to open count_to_dispatch.glsl");
+
+    let empty_fragment_glsl = "#version 460 core\nvoid main() {}\n";
+
+    let occluder_material_glsl = std::fs::read_to_string(
+        base_path
+            .join("..")
+            .join("..")
+            .join("malwerks_shaders")
+            .join("occluder_material.glsl"),
+    )
+    .expect("failed to open occluder_material.glsl");
+
+    let occluder_resolve_glsl = std::fs::read_to_string(
+        base_path
+            .join("..")
+            .join("..")
+            .join("malwerks_shaders")
+            .join("occluder_resolve.glsl"),
+    )
+    .expect("failed to open occluder_resolve.glsl");
 
     let postprocess_glsl = std::fs::read_to_string(
         base_path
@@ -129,12 +165,99 @@ fn import_global_shaders(global_resources: &mut DiskGlobalResources, base_path: 
             .expect("failed to compile compute shader")
             .as_binary(),
     );
+    let occlusion_culling_compute_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &occlusion_culling_glsl,
+                shaderc::ShaderKind::Compute,
+                "occlusion_culling.glsl",
+                "main",
+                Some(&compute_stage_options),
+            )
+            .expect("failed to compile compute shader")
+            .as_binary(),
+    );
+    let count_to_dispatch_compute_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &count_to_dispatch_glsl,
+                shaderc::ShaderKind::Compute,
+                "count_to_dispatch.glsl",
+                "main",
+                Some(&compute_stage_options),
+            )
+            .expect("failed to compile compute shader")
+            .as_binary(),
+    );
 
     let mut vertex_stage_options = compile_options.clone().expect("failed to clone vertex options");
     vertex_stage_options.add_macro_definition("VERTEX_STAGE", None);
 
     let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
     fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
+
+    let empty_fragment_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &empty_fragment_glsl,
+                shaderc::ShaderKind::Fragment,
+                "empty_fragment.glsl",
+                "main",
+                Some(&fragment_stage_options),
+            )
+            .expect("failed to compile empty fragment stage")
+            .as_binary(),
+    );
+
+    let occluder_material_vertex_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &occluder_material_glsl,
+                shaderc::ShaderKind::Vertex,
+                "occluder_material.glsl",
+                "main",
+                Some(&vertex_stage_options),
+            )
+            .expect("failed to compile vertex shader")
+            .as_binary(),
+    );
+    let occluder_material_fragment_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &occluder_material_glsl,
+                shaderc::ShaderKind::Fragment,
+                "occluder_material.glsl",
+                "main",
+                Some(&fragment_stage_options),
+            )
+            .expect("failed to compile fragment shader")
+            .as_binary(),
+    );
+
+    let occluder_resolve_vertex_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &occluder_resolve_glsl,
+                shaderc::ShaderKind::Vertex,
+                "occluder_resolve.glsl",
+                "main",
+                Some(&vertex_stage_options),
+            )
+            .expect("failed to compile vertex shader")
+            .as_binary(),
+    );
+    let occluder_resolve_fragment_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &occluder_resolve_glsl,
+                shaderc::ShaderKind::Fragment,
+                "occluder_resolve.glsl",
+                "main",
+                Some(&fragment_stage_options),
+            )
+            .expect("failed to compile fragment shader")
+            .as_binary(),
+    );
 
     let postprocess_vertex_stage = Vec::from(
         compiler
@@ -187,6 +310,13 @@ fn import_global_shaders(global_resources: &mut DiskGlobalResources, base_path: 
     );
 
     global_resources.apex_culling_compute_stage = apex_culling_compute_stage;
+    global_resources.occlusion_culling_compute_stage = occlusion_culling_compute_stage;
+    global_resources.count_to_dispatch_compute_stage = count_to_dispatch_compute_stage;
+    global_resources.empty_fragment_stage = empty_fragment_stage;
+    global_resources.occluder_material_vertex_stage = occluder_material_vertex_stage;
+    global_resources.occluder_material_fragment_stage = occluder_material_fragment_stage;
+    global_resources.occluder_resolve_vertex_stage = occluder_resolve_vertex_stage;
+    global_resources.occluder_resolve_fragment_stage = occluder_resolve_fragment_stage;
     global_resources.postprocess_vertex_stage = postprocess_vertex_stage;
     global_resources.postprocess_fragment_stage = postprocess_fragment_stage;
     global_resources.imgui_vertex_stage = imgui_vertex_stage;

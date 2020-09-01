@@ -170,7 +170,7 @@ pub fn import_meshes(
             }
 
             // TODO: Detect and merge identical buffers
-            let (vertex_buffer, index_buffer, mesh_clusters, bounding_cones) =
+            let (vertex_buffer, draw_index_buffer, occluder_index_buffer, mesh_clusters, bounding_cones) =
                 if let Some(indices) = primitive.indices() {
                     let index_count = indices.count();
                     let index_stride = match indices.data_type() {
@@ -203,21 +203,24 @@ pub fn import_meshes(
                 };
 
             log::info!(
-                "Stats for {:?}: vertices: {} -> {}, indices: {}, cluster count: {}",
+                "Stats for {:?}: vertices: {} -> {}, indices: {}, occluder indices: {}, cluster count: {}",
                 mesh.name().unwrap_or_default(),
                 vertex_count,
                 vertex_buffer.data.len() / (vertex_buffer.stride as usize),
-                index_buffer.data.len() / (index_buffer.stride as usize),
+                draw_index_buffer.data.len() / (draw_index_buffer.stride as usize),
+                occluder_index_buffer.data.len() / (occluder_index_buffer.stride as usize),
                 mesh_clusters.len(),
             );
 
             let vertex_buffer_id = static_scenery.buffers.len();
             static_scenery.buffers.push(vertex_buffer);
-            static_scenery.buffers.push(index_buffer);
+            static_scenery.buffers.push(draw_index_buffer);
+            static_scenery.buffers.push(occluder_index_buffer);
 
             let disk_mesh = DiskStaticMesh {
                 vertex_buffer: vertex_buffer_id,
-                index_buffer: vertex_buffer_id + 1,
+                draw_index_buffer: vertex_buffer_id + 1,
+                occluder_index_buffer: vertex_buffer_id + 2,
                 mesh_clusters,
                 bounding_cones,
             };

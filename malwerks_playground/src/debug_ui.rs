@@ -88,6 +88,20 @@ pub fn show_debug_window<'a>(
                 if ui.checkbox(im_str!("Apex culling paused"), unsafe { &mut APEX_CULLING_PAUSED }) {
                     render_world.debug_set_apex_culling_paused(unsafe { APEX_CULLING_PAUSED });
                 }
+
+                static mut OCCLUSION_CULLING_ENABLED: bool = true;
+                if ui.checkbox(im_str!("Occlusion culling enabled"), unsafe {
+                    &mut OCCLUSION_CULLING_ENABLED
+                }) {
+                    render_world.debug_set_occlusion_culling_enabled(unsafe { OCCLUSION_CULLING_ENABLED });
+                }
+
+                static mut OCCLUSION_CULLING_PAUSED: bool = false;
+                if ui.checkbox(im_str!("Occlusion culling paused"), unsafe {
+                    &mut OCCLUSION_CULLING_PAUSED
+                }) {
+                    render_world.debug_set_occlusion_culling_paused(unsafe { OCCLUSION_CULLING_PAUSED });
+                }
             }
         });
 }

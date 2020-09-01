@@ -627,6 +627,56 @@ impl CommandBuffer {
     }
 }
 
+// VK_KHR_draw_indirect_count
+
+impl CommandBuffer {
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndirectCountKHR.html>"]
+    pub fn draw_indirect_count(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        count_buffer: vk::Buffer,
+        count_buffer_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            ash_static().draw_indirect_count.cmd_draw_indirect_count_khr(
+                self.0,
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+    }
+
+    #[doc = "<https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdDrawIndexedIndirectCountKHR.html>"]
+    pub fn draw_indexed_indirect_count(
+        &mut self,
+        buffer: vk::Buffer,
+        offset: vk::DeviceSize,
+        count_buffer: vk::Buffer,
+        count_buffer_offset: vk::DeviceSize,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            ash_static().draw_indirect_count.cmd_draw_indexed_indirect_count_khr(
+                self.0,
+                buffer,
+                offset,
+                count_buffer,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            );
+        }
+    }
+}
+
 // ray tracing nv
 
 impl CommandBuffer {

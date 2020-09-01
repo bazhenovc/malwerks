@@ -48,16 +48,7 @@ fn import_gltf(command_line: &CommandLineOptions) -> DiskStaticScenery {
         materials: Vec::new(),
         buckets: Vec::new(),
         environment_probes: Vec::new(),
-        global_resources: DiskGlobalResources {
-            precomputed_brdf_image: 0,
-            apex_culling_compute_stage: Vec::new(),
-            skybox_vertex_stage: Vec::new(),
-            skybox_fragment_stage: Vec::new(),
-            postprocess_vertex_stage: Vec::new(),
-            postprocess_fragment_stage: Vec::new(),
-            imgui_vertex_stage: Vec::new(),
-            imgui_fragment_stage: Vec::new(),
-        },
+        global_resources: DiskGlobalResources::default(),
     };
 
     let gltf = gltf::Gltf::open(&command_line.input_file).expect("failed to open gltf");
