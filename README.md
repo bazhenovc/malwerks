@@ -58,6 +58,7 @@ Disabling apex culling is supported in a similar fashion, by doing that we furth
 Málwerks also supports "pausing" apex and occlusion culling for debug purposes, this effectively stops them but still uses generated buffers for the final pass. This allows us to see what the GPU is actually rendering from that particular camera perspective. You can see that all back facing and occluded clusters are completely gone.
 
 ![ApexCullingPaused_OcclusionCullingPaused](assets/screenshots/apex_occlusion_paused.png)
+![ApexCullingUnpaused_OcclusionCullingUnpaused](assets/screenshots/apex_occlusion_unpaused.png)
 
 ### Further improvements and known issues
 
