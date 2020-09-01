@@ -39,7 +39,7 @@ When it's all done the scene is rendered in a regular fashion using draw indirec
 
 Here's an occlusion culling stress-test scene with an obscene amount of triangles and a huge amount of overdraw - there are 24 instances of one mesh in this scene, the mesh has 991232 vertices and 1486848 which results in 15488 clusters after processing and 371712 clusters in the entire scene.
 
-This scene is specifically designed to stress-test this one particular rendering feature, real-world scenarious will likely be way less intense.
+This scene is specifically designed to stress-test this one particular rendering feature, real-world scenarios will likely be way less intense.
 
 Textures used are from [CC0 Textures](https://cc0textures.com/)(by the way, you should consider donating to them).
 All screenshots were captured in 1920x1080 resolution with an `NVIDIA RTX 2070` GPU in windowed mode on a 4K monitor.
