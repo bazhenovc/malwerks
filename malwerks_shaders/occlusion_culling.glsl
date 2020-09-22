@@ -28,18 +28,15 @@ layout (std430, set = 0, binding = 3) restrict writeonly buffer OutputDrawComman
 
 layout (local_size_x = 8, local_size_y = 1, local_size_z = 1) in;
 void main() {
-    // if (gl_GlobalInvocationID.x == 0) {
-    //     output_count.y = 0;
-    // }
-    // barrier();
+    if (gl_GlobalInvocationID.x < visibility.length()) {
+        uvec4 visible = visibility[gl_GlobalInvocationID.x];
+        if (bool(visible.x)) {
+            uint command_index = atomicAdd(output_count.y, 1);
+            output_draw_commands[command_index] = input_draw_commands[gl_GlobalInvocationID.x];
+        }
 
-    uvec4 visible = visibility[gl_GlobalInvocationID.x];
-    if (bool(visible.x)) {
-        uint command_index = atomicAdd(output_count.y, 1);
-        output_draw_commands[command_index] = input_draw_commands[gl_GlobalInvocationID.x];
+        barrier();
+
+        visibility[gl_GlobalInvocationID.x] = uvec4(0, 0, 0, 0);
     }
-
-    barrier();
-
-    visibility[gl_GlobalInvocationID.x] = uvec4(0, 0, 0, 0);
 }

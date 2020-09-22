@@ -50,30 +50,32 @@ bool cone_apex_test(vec3 apex, vec4 axis) {
 
 layout (local_size_x = 8, local_size_y = 1, local_size_z = 1) in;
 void main() {
-    if (gl_GlobalInvocationID.x == 0) {
-        output_count = uvec2(0, 0);
-    }
+    if (gl_GlobalInvocationID.x < input_cones.length()) {
+        if (gl_GlobalInvocationID.x == 0) {
+            output_count = uvec2(0, 0);
+        }
 
-    barrier();
+        barrier();
 
-    BoundingCone input_cluster = input_cones[gl_GlobalInvocationID.x];
+        BoundingCone input_cluster = input_cones[gl_GlobalInvocationID.x];
 
-    // vec3 apex = input_cluster.cone_apex.xyz;
-    // uint axis_bits = floatBitsToUint(input_cluster.cone_apex.w);
-    // vec4 axis = vec4(
-    //     float((axis_bits >>  0) & 0xFF) / 255.0,
-    //     float((axis_bits >>  8) & 0xFF) / 255.0,
-    //     float((axis_bits >> 16) & 0xFF) / 255.0,
-    //     float((axis_bits >> 24) & 0xFF) / 255.0
-    // );
+        // vec3 apex = input_cluster.cone_apex.xyz;
+        // uint axis_bits = floatBitsToUint(input_cluster.cone_apex.w);
+        // vec4 axis = vec4(
+        //     float((axis_bits >>  0) & 0xFF) / 255.0,
+        //     float((axis_bits >>  8) & 0xFF) / 255.0,
+        //     float((axis_bits >> 16) & 0xFF) / 255.0,
+        //     float((axis_bits >> 24) & 0xFF) / 255.0
+        // );
 
-    vec3 apex = input_cluster.cone_apex.xyz;
-    vec4 axis = input_cluster.cone_axis;
+        vec3 apex = input_cluster.cone_apex.xyz;
+        vec4 axis = input_cluster.cone_axis;
 
-    bool cull_result = axis.w >= 1.0 || cone_apex_test(apex, axis);
-    if (cull_result) {
-        uint command_index = atomicAdd(output_count.x, 1);
-        output_occluder_draw_commands[command_index] = input_occluder_draw_commands[gl_GlobalInvocationID.x];
-        output_draw_commands[command_index] = input_draw_commands[gl_GlobalInvocationID.x];
+        bool cull_result = axis.w >= 1.0 || cone_apex_test(apex, axis);
+        if (cull_result) {
+            uint command_index = atomicAdd(output_count.x, 1);
+            output_occluder_draw_commands[command_index] = input_occluder_draw_commands[gl_GlobalInvocationID.x];
+            output_draw_commands[command_index] = input_draw_commands[gl_GlobalInvocationID.x];
+        }
     }
 }
