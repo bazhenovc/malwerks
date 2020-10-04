@@ -12,22 +12,14 @@ malwerks_resources = { path = "../malwerks_resources" }
 malwerks_external = { path = "../malwerks_external" }
 malwerks_gltf = { path = "../malwerks_gltf" }
 
-ash = "*"
 log = "*"
 pretty_env_logger = "*"
 logging_timer = "*"
-shaderc = "*"
 ultraviolet = "*"
 rayon = "*"
 indicatif = "*"
 image = "*"
 structopt = "*"
-bytemuck = "*"
-
-[dependencies.gltf]
-version = "*"
-default-features = false
-features = ["names"]
 
 [[bin]]
 name = "import_gltf"

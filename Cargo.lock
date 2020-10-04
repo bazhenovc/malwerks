@@ -1122,9 +1122,6 @@ dependencies = [
 name = "malwerks_tools"
 version = "0.1.0"
 dependencies = [
- "ash",
- "bytemuck",
- "gltf",
  "image",
  "indicatif",
  "log",
@@ -1136,7 +1133,6 @@ dependencies = [
  "malwerks_resources",
  "pretty_env_logger",
  "rayon",
- "shaderc",
  "structopt",
  "ultraviolet",
 ]
