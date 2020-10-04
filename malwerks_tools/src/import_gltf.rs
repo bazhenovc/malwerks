@@ -4,25 +4,7 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use malwerks_resources::*;
-
-mod gltf_images;
-mod gltf_material_instances;
-mod gltf_materials;
-mod gltf_meshes;
-mod gltf_nodes;
-mod gltf_shared;
-
-mod global_resources;
-
-mod meshopt;
-mod texconv;
-
-use gltf_images::*;
-use gltf_material_instances::*;
-use gltf_meshes::*;
-use gltf_nodes::*;
-
-use global_resources::*;
+use malwerks_gltf::*;
 
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(name = "import_gltf", about = "glTF import tool")]

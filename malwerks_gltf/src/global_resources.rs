@@ -3,9 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_external::*;
 use malwerks_resources::*;
-
-use crate::texconv::*;
 
 pub fn import_global_resources(static_scenery: &mut DiskStaticScenery, base_path: &std::path::Path) {
     import_global_images(static_scenery, base_path);

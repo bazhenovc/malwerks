@@ -9,6 +9,8 @@ license = "MPL-2.0"
 malwerks_dds = { path = "../malwerks_dds" }
 malwerks_ply = { path = "../malwerks_ply" }
 malwerks_resources = { path = "../malwerks_resources" }
+malwerks_external = { path = "../malwerks_external" }
+malwerks_gltf = { path = "../malwerks_gltf" }
 
 ash = "*"
 log = "*"
@@ -21,7 +23,6 @@ indicatif = "*"
 image = "*"
 structopt = "*"
 bytemuck = "*"
-meshopt = "*"
 
 [dependencies.gltf]
 version = "*"

@@ -7,5 +7,7 @@ members = [
     "malwerks_playground",
 
     "malwerks_dds",
-    "malwerks_ply"
+    "malwerks_ply",
+    "malwerks_gltf",
+    "malwerks_external"
 ]

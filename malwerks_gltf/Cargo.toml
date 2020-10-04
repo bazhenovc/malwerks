@@ -1,0 +1,23 @@
+[package]
+name = "malwerks_gltf"
+version = "0.1.0"
+authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
+edition = "2018"
+license = "MPL-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+malwerks_resources = { path = "../malwerks_resources" }
+malwerks_external = { path = "../malwerks_external" }
+
+shaderc = "*"
+log = "*"
+ash = "*"
+ultraviolet = "*"
+bytemuck = "*"
+
+[dependencies.gltf]
+version = "*"
+default-features = false
+features = ["names"]

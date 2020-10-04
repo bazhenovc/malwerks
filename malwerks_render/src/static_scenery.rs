@@ -183,9 +183,11 @@ impl StaticScenery {
             let mut instance_index = 0usize;
             for bucket in &self.buckets {
                 let occluder_pipeline_layout = self.occluder_pipeline_layouts[bucket.material];
-                let pipeline = self.occluder_pipelines[bucket.material];
 
-                command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, pipeline);
+                command_buffer.bind_pipeline(
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.occluder_pipelines[bucket.material],
+                );
                 command_buffer.push_constants(
                     occluder_pipeline_layout,
                     vk::ShaderStageFlags::VERTEX,
@@ -267,9 +269,8 @@ impl StaticScenery {
         let mut instance_index = 0usize;
         for bucket in &self.buckets {
             let forward_pipeline_layout = self.forward_pipeline_layouts[bucket.material];
-            let pipeline = self.forward_pipelines[bucket.material];
 
-            command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, pipeline);
+            command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.forward_pipelines[bucket.material]);
             command_buffer.push_constants(
                 forward_pipeline_layout,
                 vk::ShaderStageFlags::VERTEX,
