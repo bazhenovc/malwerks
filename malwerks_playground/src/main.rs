@@ -126,8 +126,8 @@ impl Game {
         );
         let post_process = PostProcess::new(
             render_world.get_global_resources(),
-            render_world.get_render_pass(),
-            &surface_pass,
+            render_world.get_forward_render_pass(),
+            surface_pass.get_render_layer(),
             &mut factory,
         );
 
@@ -255,10 +255,12 @@ impl Game {
             self.gpu_profiler.report_frame();
         }
 
+        let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
+        let surface_layer = self.surface_pass.get_render_layer_mut();
+
         let image_index = {
             puffin::profile_scope!("acquire_frame");
-            let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
-            let frame_fence = self.surface_pass.get_signal_fence(&frame_context);
+            let frame_fence = surface_layer.get_signal_fence(&frame_context);
 
             // acquire next image
             self.device.wait_for_fences(&[frame_fence], true, u64::max_value());
@@ -274,10 +276,11 @@ impl Game {
 
             {
                 puffin::profile_scope!("render_world");
-                // setup render passes
-                self.surface_pass.add_dependency(
+
+                // setup render layers
+                surface_layer.add_dependency(
                     &frame_context,
-                    self.render_world.get_render_pass(),
+                    self.render_world.get_forward_render_pass().get_render_layer(),
                     vk::PipelineStageFlags::FRAGMENT_SHADER,
                 );
 
@@ -299,11 +302,11 @@ impl Game {
                         extent: surface_extent,
                     }
                 };
-                self.surface_pass
-                    .acquire_frame(&frame_context, &mut self.device, &mut self.factory);
-                self.surface_pass.begin(&frame_context, screen_area);
-                self.post_process
-                    .render(screen_area, &frame_context, &mut self.surface_pass);
+                surface_layer.acquire_frame(&frame_context, &mut self.device, &mut self.factory);
+                surface_layer
+                    .add_wait_condition(image_ready_semaphore, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
+                surface_layer.begin_command_buffer(&frame_context, screen_area);
+                self.post_process.render(screen_area, &frame_context, surface_layer);
             }
 
             // process imgui
@@ -336,7 +339,7 @@ impl Game {
                     self.imgui_graphics.draw(
                         &frame_context,
                         &mut self.factory,
-                        self.surface_pass.get_command_buffer(&frame_context),
+                        surface_layer.get_command_buffer(&frame_context),
                         ui.render(),
                     );
                 }
@@ -345,11 +348,11 @@ impl Game {
 
         {
             puffin::profile_scope!("present");
-            self.surface_pass.end(&frame_context);
-            self.surface_pass.submit_commands(&frame_context, &mut self.queue);
+            surface_layer.end_command_buffer(&frame_context);
+            surface_layer.submit_commands(&frame_context, &mut self.queue);
             self.surface.present(
                 &mut self.queue,
-                self.surface_pass.get_signal_semaphore(&frame_context),
+                surface_layer.get_signal_semaphore(&frame_context),
                 image_index,
             );
             self.device.end_frame(frame_context);

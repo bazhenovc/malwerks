@@ -7,7 +7,7 @@ use malwerks_resources::*;
 use malwerks_vk::*;
 
 use crate::forward_pass::*;
-use crate::render_pass::*;
+use crate::render_layer::*;
 
 pub struct PostProcess {
     point_sampler: vk::Sampler,
@@ -25,15 +25,12 @@ pub struct PostProcess {
 }
 
 impl PostProcess {
-    pub fn new<T>(
+    pub fn new(
         global_resources: &DiskGlobalResources,
         source_pass: &ForwardPass, // TODO: make it a generic render pass
-        destination_pass: &T,
+        destination_pass: &RenderLayer,
         factory: &mut DeviceFactory,
-    ) -> Self
-    where
-        T: RenderPass,
-    {
+    ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
                 .code(&global_resources.postprocess_vertex_stage)
@@ -233,10 +230,7 @@ impl PostProcess {
         factory.destroy_pipeline(self.pipeline);
     }
 
-    pub fn render<T>(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, destination_pass: &mut T)
-    where
-        T: RenderPass,
-    {
+    pub fn render(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, destination_pass: &mut RenderLayer) {
         let command_buffer = destination_pass.get_command_buffer(frame_context);
 
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline);

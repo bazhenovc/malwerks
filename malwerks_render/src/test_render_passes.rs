@@ -26,15 +26,13 @@ impl CaptureRenderTargets for ForwardPass {
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Vec<(&'static str, ScratchImage)> {
-        use crate::render_pass::*;
-
-        let signal_semaphore = self.get_signal_semaphore(frame_context);
+        let signal_semaphore = self.get_render_layer().get_signal_semaphore(frame_context);
         let stage_mask = vk::PipelineStageFlags::ALL_GRAPHICS;
 
         let color_image = capture_render_target(
             signal_semaphore,
             stage_mask,
-            self.get_color_resource(),
+            self.get_render_layer().get_image_resource(0),
             self.get_extent(),
             vk::ImageAspectFlags::COLOR,
             DXGI_FORMAT_R11G11B10_FLOAT,
@@ -212,9 +210,10 @@ fn render_test_frame(
     let frame_context = device.begin_frame();
     camera.update_matrices();
     render_world.render(camera, &frame_context, device, factory, queue);
-    let images = render_world
-        .get_render_pass()
-        .capture_render_targets(&frame_context, command_buffer, factory, queue);
+    let images =
+        render_world
+            .get_forward_render_pass()
+            .capture_render_targets(&frame_context, command_buffer, factory, queue);
 
     device.end_frame(frame_context);
 

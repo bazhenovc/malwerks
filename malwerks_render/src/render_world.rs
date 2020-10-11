@@ -9,7 +9,6 @@ use malwerks_vk::*;
 use crate::camera::*;
 use crate::forward_pass::*;
 use crate::occluder_pass::*;
-use crate::render_pass::*;
 use crate::shared_frame_data::*;
 use crate::sky_box::*;
 use crate::static_scenery::*;
@@ -93,7 +92,11 @@ impl RenderWorld {
         &self.global_resources
     }
 
-    pub fn get_render_pass(&self) -> &ForwardPass {
+    pub fn get_occluder_render_pass(&self) -> &OccluderPass {
+        &self.occluder_pass
+    }
+
+    pub fn get_forward_render_pass(&self) -> &ForwardPass {
         &self.forward_pass
     }
 
@@ -127,20 +130,20 @@ impl RenderWorld {
         };
         self.shared_frame_data.update(frame_context, camera, factory);
 
-        self.forward_pass.add_dependency(
-            frame_context,
-            &self.occluder_pass,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-        );
+        let forward_color_image = self.forward_pass.get_color_image();
+        let forward_layer = self.forward_pass.get_render_layer_mut();
+        let occluder_layer = self.occluder_pass.get_render_layer_mut();
 
-        self.occluder_pass.acquire_frame(frame_context, device, factory);
-        let command_buffer = self.occluder_pass.get_command_buffer(frame_context);
+        forward_layer.add_dependency(frame_context, occluder_layer, vk::PipelineStageFlags::FRAGMENT_SHADER);
+
+        occluder_layer.acquire_frame(frame_context, device, factory);
+        let command_buffer = occluder_layer.get_command_buffer(frame_context);
         self.static_scenery
             .dispatch_apex_culling(command_buffer, frame_context, &self.shared_frame_data);
 
-        self.occluder_pass.begin(frame_context, occluder_screen_area);
+        occluder_layer.begin_command_buffer(frame_context, occluder_screen_area);
         {
-            let command_buffer = self.occluder_pass.get_command_buffer(frame_context);
+            let command_buffer = occluder_layer.get_command_buffer(frame_context);
             command_buffer.set_viewport(
                 0,
                 &[vk::Viewport {
@@ -156,19 +159,17 @@ impl RenderWorld {
 
             self.static_scenery
                 .render_occluder(command_buffer, frame_context, &self.shared_frame_data);
-            self.occluder_pass.end(frame_context);
+            occluder_layer.end_command_buffer(frame_context);
 
-            let command_buffer = self.occluder_pass.get_command_buffer(frame_context);
+            let command_buffer = occluder_layer.get_command_buffer(frame_context);
             self.static_scenery
                 .dispatch_occlusion_culling(command_buffer, frame_context, &self.shared_frame_data);
         }
 
-        self.forward_pass.acquire_frame(frame_context, device, factory);
-        self.forward_pass.begin(frame_context, screen_area);
+        forward_layer.acquire_frame(frame_context, device, factory);
+        forward_layer.begin_command_buffer(frame_context, screen_area);
         {
-            // let depth_image = self.forward_pass.get_depth_image();
-            let color_image = self.forward_pass.get_color_image();
-            let command_buffer = self.forward_pass.get_command_buffer(frame_context);
+            let command_buffer = forward_layer.get_command_buffer(frame_context);
             command_buffer.set_viewport(
                 0,
                 &[vk::Viewport {
@@ -186,58 +187,38 @@ impl RenderWorld {
                 .render_forward(command_buffer, frame_context, &self.shared_frame_data);
             self.sky_box
                 .render(command_buffer, frame_context, &self.shared_frame_data);
-            self.forward_pass.end(frame_context);
+            forward_layer.end_command_buffer(frame_context);
 
-            let command_buffer = self.forward_pass.get_command_buffer(frame_context);
+            let command_buffer = forward_layer.get_command_buffer(frame_context);
             command_buffer.pipeline_barrier(
                 vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
                 None,
                 &[],
                 &[],
-                &[
-                    // vk::ImageMemoryBarrier::builder()
-                    //     .src_access_mask(vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE)
-                    //     .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                    //     .old_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                    //     .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    //     .src_queue_family_index(!0)
-                    //     .dst_queue_family_index(!0)
-                    //     .image(depth_image)
-                    //     .subresource_range(
-                    //         vk::ImageSubresourceRange::builder()
-                    //             .aspect_mask(vk::ImageAspectFlags::DEPTH)
-                    //             .base_mip_level(0)
-                    //             .level_count(1)
-                    //             .base_array_layer(0)
-                    //             .layer_count(1)
-                    //             .build(),
-                    //     )
-                    //     .build(),
-                    vk::ImageMemoryBarrier::builder()
-                        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                        .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                        .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .src_queue_family_index(!0)
-                        .dst_queue_family_index(!0)
-                        .image(color_image)
-                        .subresource_range(
-                            vk::ImageSubresourceRange::builder()
-                                .aspect_mask(vk::ImageAspectFlags::COLOR)
-                                .base_mip_level(0)
-                                .level_count(1)
-                                .base_array_layer(0)
-                                .layer_count(1)
-                                .build(),
-                        )
-                        .build(),
-                ],
+                &[vk::ImageMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                    .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                    .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .src_queue_family_index(!0)
+                    .dst_queue_family_index(!0)
+                    .image(forward_color_image)
+                    .subresource_range(
+                        vk::ImageSubresourceRange::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .base_mip_level(0)
+                            .level_count(1)
+                            .base_array_layer(0)
+                            .layer_count(1)
+                            .build(),
+                    )
+                    .build()],
             );
         }
 
-        self.occluder_pass.submit_commands(frame_context, queue);
-        self.forward_pass.submit_commands(frame_context, queue);
+        occluder_layer.submit_commands(frame_context, queue);
+        forward_layer.submit_commands(frame_context, queue);
     }
 
     pub fn try_get_oldest_timestamps(

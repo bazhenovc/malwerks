@@ -7,7 +7,6 @@ use malwerks_resources::*;
 use malwerks_vk::*;
 
 use crate::occluder_pass::*;
-use crate::render_pass::*;
 
 #[derive(Default)]
 pub struct OccluderResolve {

@@ -8,7 +8,7 @@ use malwerks_render::*;
 use crate::surface_winit::*;
 
 pub struct SurfacePass {
-    base_pass: BaseRenderPass,
+    render_layer: RenderLayer,
     _images: Vec<vk::Image>,
     _image_views: Vec<vk::ImageView>,
     image_ready_semaphore: FrameLocal<vk::Semaphore>,
@@ -93,15 +93,16 @@ impl SurfacePass {
                     .build(),
             )
         });
+        let clear_values = vec![vk::ClearValue::default()];
         let image_ready_semaphore = FrameLocal::new(|_| factory.create_semaphore(&vk::SemaphoreCreateInfo::default()));
 
         Self {
-            base_pass: BaseRenderPass::new(
+            render_layer: RenderLayer::from_existing_render_pass(
                 device,
                 factory,
                 render_pass,
                 framebuffer,
-                vec![vk::ClearValue::default()],
+                clear_values,
             ),
             _images: swapchain_images,
             _image_views: swapchain_image_views,
@@ -109,75 +110,29 @@ impl SurfacePass {
         }
     }
 
-    //pub fn get_image(&self) -> vk::Image {
-    //    self.images[self.base_pass.get_current_frame()]
-    //}
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
+        self.image_ready_semaphore
+            .destroy(|res| factory.destroy_semaphore(*res));
+        self.render_layer.destroy(factory);
+    }
 
-    //pub fn get_image_view(&self) -> vk::ImageView {
-    //    self.image_views[self.base_pass.get_current_frame()]
-    //}
+    pub fn try_get_oldest_timestamp(
+        &self,
+        frame_context: &FrameContext,
+        factory: &mut DeviceFactory,
+    ) -> Option<[u64; 2]> {
+        self.render_layer.try_get_oldest_timestamp(frame_context, factory)
+    }
 
     pub fn get_image_ready_semaphore(&self, frame_context: &FrameContext) -> vk::Semaphore {
         *self.image_ready_semaphore.get(frame_context)
     }
 
-    //pub fn get_base_pass(&self) -> &BaseRenderPass {
-    //    &self.base_pass
-    //}
-}
-
-impl RenderPass for SurfacePass {
-    fn acquire_frame(&mut self, frame_context: &FrameContext, device: &mut Device, factory: &mut DeviceFactory) {
-        self.base_pass.acquire_frame(frame_context, device, factory);
+    pub fn get_render_layer(&self) -> &RenderLayer {
+        &self.render_layer
     }
 
-    fn begin(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D) {
-        self.add_wait_condition(
-            self.get_image_ready_semaphore(frame_context),
-            vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-        );
-        self.base_pass.begin(frame_context, render_area);
-    }
-
-    fn end(&mut self, frame_context: &FrameContext) {
-        self.base_pass.end(frame_context);
-    }
-
-    fn submit_commands(&mut self, frame_context: &FrameContext, graphics_queue: &mut DeviceQueue) {
-        self.base_pass.submit_commands(frame_context, graphics_queue);
-    }
-
-    fn get_signal_semaphore(&self, frame_context: &FrameContext) -> vk::Semaphore {
-        self.base_pass.get_signal_semaphore(frame_context)
-    }
-
-    fn get_signal_fence(&self, frame_context: &FrameContext) -> vk::Fence {
-        self.base_pass.get_signal_fence(frame_context)
-    }
-
-    fn get_render_pass(&self) -> vk::RenderPass {
-        self.base_pass.get_render_pass()
-    }
-
-    fn get_framebuffer(&self, frame_context: &FrameContext) -> vk::Framebuffer {
-        self.base_pass.get_framebuffer(frame_context)
-    }
-
-    fn get_command_buffer(&mut self, frame_context: &FrameContext) -> &mut CommandBuffer {
-        self.base_pass.get_command_buffer(frame_context)
-    }
-
-    fn add_wait_condition(&mut self, semaphore: vk::Semaphore, stage_mask: vk::PipelineStageFlags) {
-        self.base_pass.add_wait_condition(semaphore, stage_mask);
-    }
-
-    fn try_get_oldest_timestamp(&self, frame_context: &FrameContext, factory: &mut DeviceFactory) -> Option<[u64; 2]> {
-        self.base_pass.try_get_oldest_timestamp(frame_context, factory)
-    }
-
-    fn destroy(&mut self, factory: &mut DeviceFactory) {
-        self.image_ready_semaphore
-            .destroy(|res| factory.destroy_semaphore(*res));
-        self.base_pass.destroy(factory);
+    pub fn get_render_layer_mut(&mut self) -> &mut RenderLayer {
+        &mut self.render_layer
     }
 }

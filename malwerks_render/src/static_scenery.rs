@@ -6,10 +6,10 @@
 use malwerks_resources::*;
 use malwerks_vk::*;
 
+use crate::forward_pass::*;
 use crate::mesh_cluster_culling::*;
 use crate::occluder_pass::*;
 use crate::occluder_resolve::*;
-use crate::render_pass::*;
 use crate::shared_frame_data::*;
 use crate::upload_batch::*;
 
@@ -43,7 +43,7 @@ pub struct StaticScenery {
     cluster_culling: MeshClusterCulling,
     occluder_resolve: OccluderResolve,
 
-    runtime_buffers: Vec<HeapAllocatedResource<vk::Buffer>>,
+    global_runtime_buffers: Vec<HeapAllocatedResource<vk::Buffer>>,
 
     debug_apex_culling_disabled: bool,
     debug_apex_culling_paused: bool,
@@ -53,18 +53,15 @@ pub struct StaticScenery {
 }
 
 impl StaticScenery {
-    pub fn from_disk<FT>(
+    pub fn from_disk(
         disk_scenery: &DiskStaticScenery,
         shared_frame_data: &SharedFrameData,
         occluder_pass: &OccluderPass,
-        forward_pass: &FT,
+        forward_pass: &ForwardPass,
         command_buffer: &mut CommandBuffer,
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
-    ) -> Self
-    where
-        FT: RenderPass,
-    {
+    ) -> Self {
         let mut static_scenery = Self::default();
         static_scenery.initialize_buffers(&disk_scenery, command_buffer, factory, queue);
         static_scenery.initialize_images(&disk_scenery, command_buffer, factory, queue);
@@ -87,7 +84,7 @@ impl StaticScenery {
         for buffer in &self.buffers {
             factory.deallocate_buffer(buffer);
         }
-        for buffer in &self.runtime_buffers {
+        for buffer in &self.global_runtime_buffers {
             factory.deallocate_buffer(buffer);
         }
         for module in &self.shader_modules {
@@ -340,7 +337,7 @@ impl StaticScenery {
     }
 
     pub fn get_visibility_buffer(&self) -> vk::Buffer {
-        self.runtime_buffers[0].0
+        self.global_runtime_buffers[0].0
     }
 
     pub fn get_image(&self, id: usize) -> vk::Image {
@@ -703,16 +700,14 @@ impl StaticScenery {
         factory.update_descriptor_sets(&temp_writes, &[]);
     }
 
-    fn initialize_pipelines<FT>(
+    fn initialize_pipelines(
         &mut self,
         disk_scenery: &DiskStaticScenery,
         factory: &mut DeviceFactory,
         occluder_pass: &OccluderPass,
-        forward_pass: &FT,
+        forward_pass: &ForwardPass,
         shared_frame_data: &SharedFrameData,
-    ) where
-        FT: RenderPass,
-    {
+    ) {
         self.shader_modules.reserve_exact(disk_scenery.materials.len() * 2);
         self.forward_pipeline_layouts
             .reserve_exact(disk_scenery.materials.len());
@@ -1190,7 +1185,7 @@ impl StaticScenery {
             // transform_buffers,
         };
 
-        self.runtime_buffers = vec![factory.allocate_buffer(
+        self.global_runtime_buffers = vec![factory.allocate_buffer(
             &vk::BufferCreateInfo::builder()
                 .size((total_draw_count * std::mem::size_of::<u32>() * 4) as _)
                 .usage(vk::BufferUsageFlags::STORAGE_BUFFER)

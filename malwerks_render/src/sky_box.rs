@@ -7,7 +7,6 @@ use malwerks_resources::*;
 use malwerks_vk::*;
 
 use crate::forward_pass::*;
-use crate::render_pass::*;
 use crate::shared_frame_data::*;
 
 // TODO: refactor this

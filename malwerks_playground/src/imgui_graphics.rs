@@ -249,7 +249,7 @@ impl ImguiGraphics {
                         .build(),
                 )
                 .layout(pipeline_layout)
-                .render_pass(pass.get_render_pass())
+                .render_pass(pass.get_render_layer().get_render_pass())
                 .subpass(0)
                 .base_pipeline_handle(vk::Pipeline::null())
                 .base_pipeline_index(0)
