@@ -603,7 +603,7 @@ impl MeshClusterCulling {
                 temp_buffer_infos.push(
                     vk::DescriptorBufferInfo::builder()
                         .offset(visibility_offset as _)
-                        .range((std::mem::size_of::<u32>() * 4 * instance.draw_count) as _)
+                        .range((std::mem::size_of::<u32>() * 8 * instance.draw_count) as _)
                         .buffer(visibility_buffer)
                         .build(),
                 );
@@ -655,7 +655,7 @@ impl MeshClusterCulling {
                         .build(),
                 );
 
-                visibility_offset += instance.draw_count * std::mem::size_of::<u32>() * 4;
+                visibility_offset += instance.draw_count * std::mem::size_of::<u32>() * 8;
                 instance_id += 1;
             }
         }

@@ -1187,7 +1187,7 @@ impl StaticScenery {
 
         self.global_runtime_buffers = vec![factory.allocate_buffer(
             &vk::BufferCreateInfo::builder()
-                .size((total_draw_count * std::mem::size_of::<u32>() * 4) as _)
+                .size((total_draw_count * std::mem::size_of::<u32>() * 8) as _)
                 .usage(vk::BufferUsageFlags::STORAGE_BUFFER)
                 .build(),
             &vk_mem::AllocationCreateInfo {
