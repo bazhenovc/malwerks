@@ -22,80 +22,82 @@ impl OccluderPass {
             factory,
             width,
             height,
-            &[RenderImageParameters {
-                image_format: vk::Format::R32_UINT,
-                image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
-                image_clear_value: vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        uint32: [!0, !0, !0, !0],
+            &RenderLayerParameters {
+                render_image_parameters: &[RenderImageParameters {
+                    image_format: vk::Format::R32_UINT,
+                    image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+                    image_clear_value: vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            uint32: [!0, !0, !0, !0],
+                        },
                     },
-                },
-            }],
-            Some(RenderImageParameters {
-                image_format: vk::Format::D32_SFLOAT,
-                image_usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                image_clear_value: vk::ClearValue::default(),
-            }),
-            &[
-                RenderPassParameters {
-                    flags: vk::SubpassDescriptionFlags::default(),
-                    pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-                    input_attachments: None,
-                    color_attachments: Some(&[vk::AttachmentReference::builder()
-                        .attachment(0)
-                        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                        .build()]),
-                    resolve_attachments: None,
-                    depth_stencil_attachment: Some(
-                        &vk::AttachmentReference::builder()
-                            .attachment(1)
-                            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                            .build(),
-                    ),
-                    preserve_attachments: None,
-                },
-                RenderPassParameters {
-                    flags: vk::SubpassDescriptionFlags::default(),
-                    pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-                    input_attachments: Some(&[vk::AttachmentReference::builder()
-                        .attachment(0)
-                        .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .build()]),
-                    color_attachments: None,
-                    resolve_attachments: None,
-                    depth_stencil_attachment: None,
-                    preserve_attachments: None,
-                },
-            ],
-            Some(&[
-                vk::SubpassDependency::builder()
-                    .src_subpass(vk::SUBPASS_EXTERNAL)
-                    .dst_subpass(0)
-                    .src_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
-                    .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                    .src_access_mask(vk::AccessFlags::MEMORY_READ)
-                    .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                    .dependency_flags(vk::DependencyFlags::BY_REGION)
-                    .build(),
-                vk::SubpassDependency::builder()
-                    .src_subpass(0)
-                    .dst_subpass(1)
-                    .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                    .dst_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
-                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                    .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                    .dependency_flags(vk::DependencyFlags::BY_REGION)
-                    .build(),
-                vk::SubpassDependency::builder()
-                    .src_subpass(0)
-                    .dst_subpass(vk::SUBPASS_EXTERNAL)
-                    .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-                    .dst_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
-                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                    .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                    .dependency_flags(vk::DependencyFlags::BY_REGION)
-                    .build(),
-            ]),
+                }],
+                depth_image_parameters: Some(RenderImageParameters {
+                    image_format: vk::Format::D32_SFLOAT,
+                    image_usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    image_clear_value: vk::ClearValue::default(),
+                }),
+                render_pass_parameters: &[
+                    RenderPassParameters {
+                        flags: vk::SubpassDescriptionFlags::default(),
+                        pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+                        input_attachments: None,
+                        color_attachments: Some(&[vk::AttachmentReference::builder()
+                            .attachment(0)
+                            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                            .build()]),
+                        resolve_attachments: None,
+                        depth_stencil_attachment: Some(
+                            &vk::AttachmentReference::builder()
+                                .attachment(1)
+                                .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                                .build(),
+                        ),
+                        preserve_attachments: None,
+                    },
+                    RenderPassParameters {
+                        flags: vk::SubpassDescriptionFlags::default(),
+                        pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+                        input_attachments: Some(&[vk::AttachmentReference::builder()
+                            .attachment(0)
+                            .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                            .build()]),
+                        color_attachments: None,
+                        resolve_attachments: None,
+                        depth_stencil_attachment: None,
+                        preserve_attachments: None,
+                    },
+                ],
+                render_pass_dependencies: Some(&[
+                    vk::SubpassDependency::builder()
+                        .src_subpass(vk::SUBPASS_EXTERNAL)
+                        .dst_subpass(0)
+                        .src_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
+                        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                        .src_access_mask(vk::AccessFlags::MEMORY_READ)
+                        .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                        .dependency_flags(vk::DependencyFlags::BY_REGION)
+                        .build(),
+                    vk::SubpassDependency::builder()
+                        .src_subpass(0)
+                        .dst_subpass(1)
+                        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                        .dst_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+                        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                        .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                        .dependency_flags(vk::DependencyFlags::BY_REGION)
+                        .build(),
+                    vk::SubpassDependency::builder()
+                        .src_subpass(0)
+                        .dst_subpass(vk::SUBPASS_EXTERNAL)
+                        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                        .dst_stage_mask(vk::PipelineStageFlags::BOTTOM_OF_PIPE)
+                        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                        .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                        .dependency_flags(vk::DependencyFlags::BY_REGION)
+                        .build(),
+                ]),
+            },
         );
 
         Self {

@@ -19,34 +19,36 @@ impl ForwardPass {
             factory,
             width,
             height,
-            &[RenderImageParameters {
-                image_format: vk::Format::B10G11R11_UFLOAT_PACK32,
-                image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
-                image_clear_value: vk::ClearValue::default(),
-            }],
-            Some(RenderImageParameters {
-                image_format: vk::Format::D32_SFLOAT,
-                image_usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-                image_clear_value: vk::ClearValue::default(),
-            }),
-            &[RenderPassParameters {
-                flags: vk::SubpassDescriptionFlags::default(),
-                pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
-                input_attachments: None,
-                color_attachments: Some(&[vk::AttachmentReference::builder()
-                    .attachment(0)
-                    .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .build()]),
-                resolve_attachments: None,
-                depth_stencil_attachment: Some(
-                    &vk::AttachmentReference::builder()
-                        .attachment(1)
-                        .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                        .build(),
-                ),
-                preserve_attachments: None,
-            }],
-            None,
+            &RenderLayerParameters {
+                render_image_parameters: &[RenderImageParameters {
+                    image_format: vk::Format::B10G11R11_UFLOAT_PACK32,
+                    image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
+                    image_clear_value: vk::ClearValue::default(),
+                }],
+                depth_image_parameters: Some(RenderImageParameters {
+                    image_format: vk::Format::D32_SFLOAT,
+                    image_usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    image_clear_value: vk::ClearValue::default(),
+                }),
+                render_pass_parameters: &[RenderPassParameters {
+                    flags: vk::SubpassDescriptionFlags::default(),
+                    pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+                    input_attachments: None,
+                    color_attachments: Some(&[vk::AttachmentReference::builder()
+                        .attachment(0)
+                        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .build()]),
+                    resolve_attachments: None,
+                    depth_stencil_attachment: Some(
+                        &vk::AttachmentReference::builder()
+                            .attachment(1)
+                            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                            .build(),
+                    ),
+                    preserve_attachments: None,
+                }],
+                render_pass_dependencies: None,
+            },
         );
 
         Self {

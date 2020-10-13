@@ -21,6 +21,13 @@ pub struct RenderPassParameters<'a> {
     pub preserve_attachments: Option<&'a [u32]>,
 }
 
+pub struct RenderLayerParameters<'a> {
+    pub render_image_parameters: &'a [RenderImageParameters],
+    pub depth_image_parameters: Option<RenderImageParameters>,
+    pub render_pass_parameters: &'a [RenderPassParameters<'a>],
+    pub render_pass_dependencies: Option<&'a [vk::SubpassDependency]>,
+}
+
 pub struct RenderLayer {
     render_pass: vk::RenderPass,
     framebuffer: FrameLocal<vk::Framebuffer>,
@@ -42,10 +49,7 @@ impl RenderLayer {
         factory: &mut DeviceFactory,
         width: u32,
         height: u32,
-        render_image_parameters: &[RenderImageParameters],
-        depth_image_parameters: Option<RenderImageParameters>,
-        render_pass_parameters: &[RenderPassParameters<'a>],
-        render_pass_dependencies: Option<&'a [vk::SubpassDependency]>,
+        layer_parameters: &RenderLayerParameters<'a>,
     ) -> Self {
         let command_pool = FrameLocal::new(|_| {
             factory.create_command_pool(
@@ -80,12 +84,14 @@ impl RenderLayer {
                 .build(),
         );
 
-        let mut clear_values =
-            Vec::with_capacity(render_image_parameters.len() + (depth_image_parameters.is_some() as usize));
+        let mut clear_values = Vec::with_capacity(
+            layer_parameters.render_image_parameters.len()
+                + (layer_parameters.depth_image_parameters.is_some() as usize),
+        );
         let mut all_image_views = Vec::with_capacity(clear_values.len());
 
-        let mut render_images = Vec::with_capacity(render_image_parameters.len());
-        for parameters in render_image_parameters {
+        let mut render_images = Vec::with_capacity(layer_parameters.render_image_parameters.len());
+        for parameters in layer_parameters.render_image_parameters {
             let (image, image_view) =
                 allocate_render_image(device, factory, width, height, parameters, vk::ImageAspectFlags::COLOR);
 
@@ -94,7 +100,7 @@ impl RenderLayer {
             render_images.push(RenderImage { image, image_view });
         }
 
-        let depth_image = if let Some(depth_image_parameters) = depth_image_parameters.as_ref() {
+        let depth_image = if let Some(depth_image_parameters) = layer_parameters.depth_image_parameters.as_ref() {
             let (image, image_view) = allocate_render_image(
                 device,
                 factory,
@@ -115,7 +121,7 @@ impl RenderLayer {
             let mut attachments = Vec::with_capacity(render_images.len() + (depth_image.is_some() as usize));
             let mut color_attachments = Vec::with_capacity(render_images.len());
 
-            for image in render_image_parameters {
+            for image in layer_parameters.render_image_parameters {
                 color_attachments.push(
                     vk::AttachmentReference::builder()
                         .attachment(attachments.len() as _)
@@ -136,7 +142,7 @@ impl RenderLayer {
                         .build(),
                 );
             }
-            if let Some(depth_image_parameters) = depth_image_parameters.as_ref() {
+            if let Some(depth_image_parameters) = layer_parameters.depth_image_parameters.as_ref() {
                 attachments.push(
                     vk::AttachmentDescription::builder()
                         .flags(Default::default())
@@ -152,8 +158,8 @@ impl RenderLayer {
                 );
             }
 
-            let mut subpasses = Vec::with_capacity(render_pass_parameters.len());
-            for render_pass_parameter in render_pass_parameters {
+            let mut subpasses = Vec::with_capacity(layer_parameters.render_pass_parameters.len());
+            for render_pass_parameter in layer_parameters.render_pass_parameters {
                 let mut subpass_builder = vk::SubpassDescription::builder()
                     .flags(render_pass_parameter.flags)
                     .pipeline_bind_point(render_pass_parameter.pipeline_bind_point);
@@ -181,7 +187,7 @@ impl RenderLayer {
                 .flags(Default::default())
                 .attachments(&attachments)
                 .subpasses(&subpasses);
-            if let Some(dependencies) = render_pass_dependencies {
+            if let Some(dependencies) = layer_parameters.render_pass_dependencies {
                 render_pass_builder = render_pass_builder.dependencies(dependencies)
             }
 
