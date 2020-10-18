@@ -11,11 +11,12 @@ license = "MPL-2.0"
 malwerks_resources = { path = "../malwerks_resources" }
 malwerks_external = { path = "../malwerks_external" }
 
-shaderc = "*"
 log = "*"
 ash = "*"
 ultraviolet = "*"
 bytemuck = "*"
+
+shaderc = "*"
 
 [dependencies.gltf]
 version = "*"

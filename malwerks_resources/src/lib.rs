@@ -5,9 +5,7 @@
 
 mod resource_compression;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskSampler {
     pub mag_filter: i32,     // vk::Filter pretending to be i32
     pub min_filter: i32,     // vk::Filter pretending to be i32
@@ -17,7 +15,7 @@ pub struct DiskSampler {
     pub address_mode_w: i32, // vk::SamplerAddressMode pretending to be i32
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskImage {
     pub width: u32,
     pub height: u32,
@@ -33,139 +31,163 @@ pub struct DiskImage {
     pub pixels: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskMaterialLayout {
     pub image_count: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskMaterialInstance {
     pub material_layout: usize,
-    pub material_data: Vec<u8>,      // arbitrary material data that goes into push constants
-    pub images: Vec<(usize, usize)>, // (texture_id, sampler_id)
+    pub material_instance_data: Vec<u8>, // arbitrary material data that goes into push constants
+    pub images: Vec<(usize, usize)>,     // (texture_id, sampler_id)
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub enum DiskVertexSemantic {
+    Position,
+    Normal,
+    Tangent,
+    Interpolated,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DiskVertexAttribute {
+    pub attribute_name: String,
+    pub attribute_semantic: DiskVertexSemantic,
+    pub attribute_format: i32, // vk::Format pretending to be i32
+    pub attribute_location: u32,
+    pub attribute_offset: usize,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskMaterial {
     pub material_layout: usize,
+
     pub vertex_stride: u64,
-    pub vertex_format: Vec<(i32, u32, usize)>, // vk::Format pretending to be i32, location, offset
-    pub vertex_stage: Vec<u32>,
-    pub fragment_stage: Vec<u32>,
+    pub vertex_format: Vec<DiskVertexAttribute>,
+
     pub fragment_alpha_test: bool,
     pub fragment_cull_flags: u32, // vk::CullModeFlags pretending to be u32
+
+    pub shader_image_mapping: Vec<(String, String)>, // image_name, uv_channel_name
+    pub shader_macro_definitions: Vec<(String, String)>, // name, value
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskBuffer {
     pub stride: u64,
-    pub usage_flags: u32, // vk::BufferUsageFlags pretending to be i32
+    pub usage_flags: u32, // vk::BufferUsageFlags pretending to be u32
 
     #[serde(with = "resource_compression")]
     pub data: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct DiskBoundingCone {
-    pub cone_apex: [f32; 4],
-    pub cone_axis: [f32; 4],
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct DiskMeshCluster {
-    pub vertex_count: u16,
-    pub draw_index_count: u16,
-    pub occluder_index_count: u16,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct DiskStaticMesh {
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DiskRenderMesh {
     pub vertex_buffer: usize,
-    pub draw_index_buffer: usize,
-    pub occluder_index_buffer: usize,
-    pub mesh_clusters: Vec<DiskMeshCluster>,
-    pub bounding_cones: Vec<DiskBoundingCone>,
+    pub index_buffer: (i32, usize), // vk::IndexType pretending to be i32, buffer_id
+    pub index_count: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskRenderInstance {
     pub mesh: usize,
     pub material_instance: usize,
-
-    pub bounding_cone_buffer: usize,
-    pub occluder_arguments_buffer: usize,
-    pub draw_arguments_buffer: usize,
 
     pub total_instance_count: usize,
     pub total_draw_count: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct DiskRenderBucket {
     pub material: usize,
     pub instances: Vec<DiskRenderInstance>,
     pub instance_transform_buffer: usize,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct DiskEnvironmentProbe {
-    pub skybox_image: usize,
-    pub iem_image: usize,
-    pub pmrem_image: usize,
-}
-
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct DiskGlobalResources {
-    pub precomputed_brdf_image: usize,
-
-    pub apex_culling_compute_stage: Vec<u32>,
-    pub occlusion_culling_compute_stage: Vec<u32>,
-    pub count_to_dispatch_compute_stage: Vec<u32>,
-
-    pub empty_fragment_stage: Vec<u32>,
-
-    pub occluder_material_vertex_stage: Vec<u32>,
-    pub occluder_material_fragment_stage: Vec<u32>,
-
-    pub occluder_resolve_vertex_stage: Vec<u32>,
-    pub occluder_resolve_fragment_stage: Vec<u32>,
-
-    pub skybox_vertex_stage: Vec<u32>,
-    pub skybox_fragment_stage: Vec<u32>,
-
-    pub postprocess_vertex_stage: Vec<u32>,
-    pub postprocess_fragment_stage: Vec<u32>,
-
-    pub imgui_vertex_stage: Vec<u32>,
-    pub imgui_fragment_stage: Vec<u32>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct DiskStaticScenery {
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DiskRenderBundle {
     pub buffers: Vec<DiskBuffer>,
-    pub meshes: Vec<DiskStaticMesh>,
+    pub meshes: Vec<DiskRenderMesh>,
     pub images: Vec<DiskImage>,
     pub samplers: Vec<DiskSampler>,
     pub material_layouts: Vec<DiskMaterialLayout>,
     pub material_instances: Vec<DiskMaterialInstance>,
     pub materials: Vec<DiskMaterial>,
     pub buckets: Vec<DiskRenderBucket>,
-    pub environment_probes: Vec<DiskEnvironmentProbe>,
-    pub global_resources: DiskGlobalResources,
 }
 
-impl DiskStaticScenery {
-    pub fn serialize_into<W>(&self, writer: W, _compression_level: u32)
+impl DiskRenderBundle {
+    pub fn serialize_into<W>(&self, writer: W, _compression_level: u32) -> Result<(), ()>
     where
         W: std::io::Write,
     {
-        bincode::serialize_into(writer, self).expect("failed to serialize static scenery");
+        match bincode::serialize_into(writer, self) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
     }
 
-    pub fn deserialize_from<R>(reader: R) -> DiskStaticScenery
+    pub fn deserialize_from<R>(reader: R) -> Result<Self, ()>
     where
         R: std::io::Read,
     {
-        bincode::deserialize_from(reader).expect("failed to deserialize static scenery")
+        match bincode::deserialize_from(reader) {
+            Ok(bundle) => Ok(bundle),
+            Err(_) => Err(()),
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DiskMaterialStages {
+    pub vertex_stage: Vec<u32>,
+    pub geometry_stage: Vec<u32>,
+    pub tessellation_control_stage: Vec<u32>,
+    pub tessellation_evaluation_stage: Vec<u32>,
+    pub fragment_stage: Vec<u32>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DiskRayTracingStages {
+    pub ray_generation_stage: Vec<u32>,
+    pub ray_closest_hit_stage: Vec<u32>,
+    pub ray_any_hit_stage: Vec<u32>,
+    pub ray_miss_stage: Vec<u32>,
+    pub intersection_stage: Vec<u32>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub enum DiskShaderStages {
+    Material(DiskMaterialStages),
+    RayTracing(DiskRayTracingStages),
+    Compute(Vec<u32>),
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct DiskShaderStageBundle {
+    pub shader_stages: Vec<DiskShaderStages>,
+}
+
+impl DiskShaderStageBundle {
+    pub fn serialize_into<W>(&self, writer: W, _compression_level: u32) -> Result<(), ()>
+    where
+        W: std::io::Write,
+    {
+        match bincode::serialize_into(writer, self) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(()),
+        }
+    }
+
+    pub fn deserialize_from<R>(reader: R) -> Result<Self, ()>
+    where
+        R: std::io::Read,
+    {
+        match bincode::deserialize_from(reader) {
+            Ok(bundle) => Ok(bundle),
+            Err(_) => Err(()),
+        }
     }
 }

@@ -5,9 +5,9 @@
 
 use malwerks_render::*;
 
+use crate::shared_resource_bundle::*;
 use crate::surface_pass::*;
 
-#[allow(dead_code)]
 pub struct ImguiGraphics {
     font_image: HeapAllocatedResource<vk::Image>,
     font_view: vk::ImageView,
@@ -42,7 +42,7 @@ impl ImguiGraphics {
 
     pub fn new(
         imgui: &mut imgui::Context,
-        global_resources: &DiskGlobalResources,
+        shared_resources: &DiskSharedResources,
         pass: &SurfacePass,
         command_buffer: &mut CommandBuffer,
         _device: &mut Device,
@@ -51,12 +51,12 @@ impl ImguiGraphics {
     ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&global_resources.imgui_vertex_stage)
+                .code(&shared_resources.imgui_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&global_resources.imgui_fragment_stage)
+                .code(&shared_resources.imgui_fragment_stage)
                 .build(),
         );
 

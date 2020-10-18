@@ -9,7 +9,6 @@ license = "MPL-2.0"
 malwerks_vk = { path = "../malwerks_vk" }
 malwerks_resources = { path = "../malwerks_resources" }
 log = "*"
-ultraviolet = "*"
 puffin = "*"
 
 [dev-dependencies]

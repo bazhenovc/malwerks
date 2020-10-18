@@ -3,14 +3,14 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_render::*;
 use malwerks_vk::*;
 
 use crate::camera::*;
-use crate::upload_batch::copy_to_mapped_memory;
 
 pub struct SharedFrameData {
-    descriptor_pool: vk::DescriptorPool,
-    frame_data_descriptor_set_layout: vk::DescriptorSetLayout,
+    pub descriptor_pool: vk::DescriptorPool,
+    pub descriptor_set_layout: vk::DescriptorSetLayout,
 
     frame_data_descriptor_set: FrameLocal<vk::DescriptorSet>,
     frame_data_buffer: FrameLocal<HeapAllocatedResource<vk::Buffer>>,
@@ -43,7 +43,7 @@ impl SharedFrameData {
                     .build()])
                 .build(),
         );
-        let frame_data_descriptor_set_layout = factory.create_descriptor_set_layout(
+        let descriptor_set_layout = factory.create_descriptor_set_layout(
             &vk::DescriptorSetLayoutCreateInfo::builder()
                 .bindings(&[vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
@@ -54,9 +54,8 @@ impl SharedFrameData {
                 .build(),
         );
 
-        let per_descriptor_layouts: Vec<vk::DescriptorSetLayout> = (0..NUM_BUFFERED_GPU_FRAMES)
-            .map(|_| frame_data_descriptor_set_layout)
-            .collect();
+        let per_descriptor_layouts: Vec<vk::DescriptorSetLayout> =
+            (0..NUM_BUFFERED_GPU_FRAMES).map(|_| descriptor_set_layout).collect();
         let descriptor_sets = factory.allocate_descriptor_sets(
             &vk::DescriptorSetAllocateInfo::builder()
                 .descriptor_pool(descriptor_pool)
@@ -88,7 +87,7 @@ impl SharedFrameData {
         let frame_data_descriptor_set = FrameLocal::new(|frame| descriptor_sets[frame]);
         Self {
             descriptor_pool,
-            frame_data_descriptor_set_layout,
+            descriptor_set_layout,
             frame_data_descriptor_set,
             frame_data_buffer,
             view_projection: Default::default(),
@@ -98,7 +97,7 @@ impl SharedFrameData {
 
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_descriptor_pool(self.descriptor_pool);
-        factory.destroy_descriptor_set_layout(self.frame_data_descriptor_set_layout);
+        factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
         self.frame_data_buffer
             .destroy(|buffer| factory.deallocate_buffer(buffer));
     }
@@ -131,13 +130,9 @@ impl SharedFrameData {
         &self.view_projection
     }
 
-    pub fn get_view_position(&self) -> &[f32] {
-        &self.view_position
-    }
-
-    pub fn get_frame_data_descriptor_set_layout(&self) -> vk::DescriptorSetLayout {
-        self.frame_data_descriptor_set_layout
-    }
+    // pub fn get_view_position(&self) -> &[f32] {
+    //     &self.view_position
+    // }
 
     pub fn get_frame_data_descriptor_set(&self, frame_context: &FrameContext) -> &vk::DescriptorSet {
         self.frame_data_descriptor_set.get(frame_context)

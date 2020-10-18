@@ -3,13 +3,12 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_render::*;
 use malwerks_vk::*;
-
-use crate::render_layer::*;
 
 pub struct ForwardPass {
     render_layer: RenderLayer,
-    extent: vk::Extent3D,
+    // extent: vk::Extent3D,
 }
 
 impl ForwardPass {
@@ -53,11 +52,11 @@ impl ForwardPass {
 
         Self {
             render_layer,
-            extent: vk::Extent3D {
-                width,
-                height,
-                depth: 1,
-            },
+            // extent: vk::Extent3D {
+            //     width,
+            //     height,
+            //     depth: 1,
+            // },
         }
     }
 
@@ -65,25 +64,25 @@ impl ForwardPass {
         self.render_layer.destroy(factory);
     }
 
-    pub fn get_render_pass(&self) -> vk::RenderPass {
-        self.render_layer.get_render_pass()
-    }
+    // pub fn get_render_pass(&self) -> vk::RenderPass {
+    //     self.render_layer.get_render_pass()
+    // }
 
-    pub fn get_depth_image(&self) -> vk::Image {
-        self.render_layer.get_depth_image().unwrap().0
-    }
+    // pub fn get_depth_image(&self) -> vk::Image {
+    //     self.render_layer.get_depth_image().unwrap().0
+    // }
 
-    pub fn get_depth_image_view(&self) -> vk::ImageView {
-        self.render_layer.get_depth_image().unwrap().1
-    }
+    // pub fn get_depth_image_view(&self) -> vk::ImageView {
+    //     self.render_layer.get_depth_image().unwrap().1
+    // }
 
     pub fn get_color_image(&self) -> vk::Image {
         self.render_layer.get_render_image(0).0
     }
 
-    pub fn get_color_image_view(&self) -> vk::ImageView {
-        self.render_layer.get_render_image(0).1
-    }
+    // pub fn get_color_image_view(&self) -> vk::ImageView {
+    //     self.render_layer.get_render_image(0).1
+    // }
 
     pub fn try_get_oldest_timestamp(
         &self,
@@ -101,7 +100,7 @@ impl ForwardPass {
         &mut self.render_layer
     }
 
-    pub fn get_extent(&self) -> vk::Extent3D {
-        self.extent
-    }
+    // pub fn get_extent(&self) -> vk::Extent3D {
+    //     self.extent
+    // }
 }

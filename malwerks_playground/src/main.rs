@@ -3,6 +3,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+mod camera;
 mod camera_state;
 mod debug_ui;
 mod imgui_graphics;
@@ -12,19 +13,45 @@ mod input_map;
 mod surface_pass;
 mod surface_winit;
 
-use malwerks_render::*;
+mod forward_pass;
+mod post_process;
+mod shared_frame_data;
+mod shared_resource_bundle;
+mod sky_box;
 
-const RENDER_WIDTH: u32 = 1920;
-const RENDER_HEIGHT: u32 = 1080;
+mod demo_pbr_forward_lit;
+
+use malwerks_render::*;
+use malwerks_vk::*;
 
 #[derive(Debug, structopt::StructOpt)]
 #[structopt(name = "malwerks_playground", about = "Playground application")]
 struct CommandLineOptions {
-    #[structopt(short = "i", long = "input", parse(from_os_str))]
-    input_file: std::path::PathBuf,
+    #[structopt(
+        short = "i",
+        long = "input",
+        parse(from_os_str),
+        help = "Folder where playground assets are located"
+    )]
+    input_folder: std::path::PathBuf,
 
-    #[structopt(short = "v", long = "validation")]
+    #[structopt(short = "v", long = "validation", help = "Enables Vulkan validation layers")]
     enable_validation: bool,
+
+    #[structopt(
+        short = "f",
+        long = "force_import",
+        help = "Forces the application to re-import all .gltf files. This operation can take a few minutes."
+    )]
+    force_import: bool,
+
+    #[structopt(
+        short = "c",
+        long = "compression_level",
+        default_value = "9",
+        help = "Controls compression level for all bundles"
+    )]
+    compression_level: u32,
 }
 
 struct TemporaryCommandBuffer {
@@ -56,8 +83,9 @@ struct Game {
     gpu_profiler: GpuProfiler,
     profiler_ui: puffin_imgui::ProfilerUi,
 
-    render_world: RenderWorld,
-    post_process: PostProcess,
+    render_shared_resources: shared_resource_bundle::RenderSharedResources,
+    gltf_import_parameters: demo_pbr_forward_lit::GltfImportParameters,
+    demo_pbr_forward_lit: demo_pbr_forward_lit::DemoPbrForwardLit,
     frame_time: std::time::Instant,
 
     input_map: input_map::InputMap,
@@ -71,8 +99,9 @@ impl Drop for Game {
 
         self.temporary_command_buffer.destroy(&mut self.factory);
         self.imgui_graphics.destroy(&mut self.factory);
-        self.render_world.destroy(&mut self.factory);
-        self.post_process.destroy(&mut self.factory);
+
+        self.render_shared_resources.destroy(&mut self.factory);
+        self.demo_pbr_forward_lit.destroy(&mut self.factory);
 
         self.surface_pass.destroy(&mut self.factory);
         self.surface.destroy(&mut self.factory);
@@ -114,28 +143,71 @@ impl Game {
 
         let surface = surface_winit::SurfaceWinit::new(&device);
         let surface_pass = surface_pass::SurfacePass::new(&surface, &device, &mut factory);
+        let surface_size = window.inner_size();
 
-        let world_path = resource_path.join(&command_line.input_file);
-        let render_world = RenderWorld::from_file(
-            &world_path,
-            (RENDER_WIDTH, RENDER_HEIGHT),
+        log::info!("surface size: {:?}", surface_size);
+
+        let shaders_folder = resource_path.join("malwerks_shaders");
+        let shared_temp_path = resource_path.join("target").join("temp");
+        let shared_bundle_path = resource_path.join("assets").join("shared_resources.bundle");
+        let shared_resource_bundle = if command_line.force_import || !shared_bundle_path.exists() {
+            log::info!("generating shared_resources.bundle");
+            let shared_resources_path = command_line.input_folder.join("shared_resources");
+            let temp_path = shared_temp_path.join("shared_resources.bundle");
+            let bundle = shared_resource_bundle::import_shared_resources(&shared_resources_path, &temp_path);
+
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(shared_bundle_path)
+                .expect("failed to open shared bundle file for writing");
+            bundle
+                .serialize_into(file, command_line.compression_level)
+                .expect("failed to serialize shared resource bundle");
+            bundle
+        } else {
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .open(shared_bundle_path)
+                .expect("failed to open shared bundle file for reading");
+            shared_resource_bundle::DiskSharedResources::deserialize_from(file)
+                .expect("failed to deserialize shared resources")
+        };
+        let render_shared_resources = shared_resource_bundle::RenderSharedResources::new(
+            &shared_resource_bundle,
+            &mut temporary_command_buffer.command_buffer,
+            &mut factory,
+            &mut queue,
+        );
+
+        let gltf_import_parameters = demo_pbr_forward_lit::GltfImportParameters {
+            gltf_file: resource_path.join("assets").join("lantern").join("Lantern.gltf"),
+            gltf_bundle_folder: resource_path.join("assets").into(),
+            gltf_temp_folder: shared_temp_path,
+            gltf_force_import: command_line.force_import,
+            gltf_shaders_folder: shaders_folder,
+            gltf_bundle_compression_level: command_line.compression_level,
+            gltf_queue_import: false,
+        };
+
+        let demo_pbr_forward_lit = demo_pbr_forward_lit::DemoPbrForwardLit::new(
+            &gltf_import_parameters,
+            &shared_resource_bundle,
+            &render_shared_resources,
+            (surface_size.width, surface_size.height),
+            surface_pass.get_render_layer(),
             &mut temporary_command_buffer.command_buffer,
             &device,
             &mut factory,
             &mut queue,
-        );
-        let post_process = PostProcess::new(
-            render_world.get_global_resources(),
-            render_world.get_forward_render_pass(),
-            surface_pass.get_render_layer(),
-            &mut factory,
         );
 
         let mut imgui = imgui::Context::create();
         let mut imgui_platform = imgui_winit::WinitPlatform::init(&mut imgui);
         let imgui_graphics = imgui_graphics::ImguiGraphics::new(
             &mut imgui,
-            render_world.get_global_resources(),
+            &shared_resource_bundle,
             &surface_pass,
             &mut temporary_command_buffer.command_buffer,
             &mut device,
@@ -202,15 +274,16 @@ impl Game {
             imgui_graphics,
             gpu_profiler,
             profiler_ui,
-            render_world,
-            post_process,
+            render_shared_resources,
+            gltf_import_parameters,
+            demo_pbr_forward_lit,
             frame_time: std::time::Instant::now(),
             input_map,
-            camera_state: camera_state::CameraState::new(Viewport {
+            camera_state: camera_state::CameraState::new(camera::Viewport {
                 x: 0,
                 y: 0,
-                width: RENDER_WIDTH,
-                height: RENDER_HEIGHT,
+                width: surface_size.width,
+                height: surface_size.height,
             }),
         }
     }
@@ -237,10 +310,10 @@ impl Game {
         let frame_context = self.device.begin_frame();
         {
             puffin::profile_scope!("gather_gpu_profile");
-            let render_world_timestamps = self
-                .render_world
+            let demo_timestamps = self
+                .demo_pbr_forward_lit
                 .try_get_oldest_timestamps(&frame_context, &mut self.factory);
-            for scope in render_world_timestamps.iter() {
+            for scope in demo_timestamps.iter() {
                 let scope_offset = self.gpu_profiler.begin_scope(scope.0, scope.1[0]);
                 self.gpu_profiler.end_scope(scope_offset, scope.1[1]);
             }
@@ -280,13 +353,14 @@ impl Game {
                 // setup render layers
                 surface_layer.add_dependency(
                     &frame_context,
-                    self.render_world.get_forward_render_pass().get_render_layer(),
+                    self.demo_pbr_forward_lit.get_final_layer(),
                     vk::PipelineStageFlags::FRAGMENT_SHADER,
                 );
 
                 // render world
                 self.camera_state.update(time_delta);
-                self.render_world.render(
+                self.demo_pbr_forward_lit.render(
+                    &self.render_shared_resources,
                     self.camera_state.get_camera(),
                     &frame_context,
                     &mut self.device,
@@ -306,7 +380,8 @@ impl Game {
                 surface_layer
                     .add_wait_condition(image_ready_semaphore, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
                 surface_layer.begin_command_buffer(&frame_context, screen_area);
-                self.post_process.render(screen_area, &frame_context, surface_layer);
+                self.demo_pbr_forward_lit
+                    .post_process(self.camera_state.get_camera(), &frame_context, surface_layer);
             }
 
             // process imgui
@@ -326,10 +401,10 @@ impl Game {
                         &window,
                         &gilrs,
                         &mut self.camera_state,
-                        &mut self.render_world,
                         1000.0 / average_delta,
                         average_delta,
                     );
+                    debug_ui::show_gltf_import_window(&ui, &mut self.gltf_import_parameters);
 
                     let _profiler_window_open = self.profiler_ui.window(&ui);
 
@@ -357,6 +432,20 @@ impl Game {
             );
             self.device.end_frame(frame_context);
         }
+
+        {
+            if self.gltf_import_parameters.gltf_queue_import {
+                self.demo_pbr_forward_lit.import_bundles(
+                    &self.gltf_import_parameters,
+                    &self.render_shared_resources,
+                    &mut self.temporary_command_buffer.command_buffer,
+                    &self.device,
+                    &mut self.factory,
+                    &mut self.queue,
+                );
+                self.gltf_import_parameters.gltf_queue_import = false;
+            }
+        }
     }
 }
 
@@ -381,10 +470,16 @@ fn main() {
     let event_loop = winit::event_loop::EventLoop::new();
     let window = winit::window::WindowBuilder::new()
         .with_title("Málwerks")
-        .with_inner_size(winit::dpi::PhysicalSize::new(RENDER_WIDTH, RENDER_HEIGHT))
         .with_resizable(false)
         .build(&event_loop)
         .unwrap();
+
+    let monitor = window.current_monitor().expect("current_monitor() failed");
+    let monitor_size = monitor.size();
+
+    let window_size = winit::dpi::PhysicalSize::new((monitor_size.width / 3) * 2, (monitor_size.height / 3) * 2);
+    window.set_inner_size(window_size);
+    log::info!("monitor size: {:?}, window size: {:?}", monitor_size, window_size);
 
     let mut gilrs = gilrs::Gilrs::new().expect("failed to initialize gamepad input");
     for (_id, gamepad) in gilrs.gamepads() {
@@ -424,10 +519,7 @@ fn main() {
                 event: WindowEvent::Resized(_size),
                 ..
             } => {
-                //let mut render_events = world.write_resource::<Vec<systems::render::RenderEvent>>();
-                //render_events.push(systems::render::RenderEvent::ResizeRequest(
-                //    s.width, s.height,
-                //));
+                // Nothing right now
             }
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

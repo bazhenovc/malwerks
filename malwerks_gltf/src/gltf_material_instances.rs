@@ -5,9 +5,11 @@
 
 use malwerks_resources::*;
 
-pub fn import_material_instances(static_scenery: &mut DiskStaticScenery, materials: gltf::iter::Materials) {
-    static_scenery.material_layouts.reserve_exact(materials.len());
-    static_scenery.material_instances.reserve_exact(materials.len());
+pub fn import_material_instances(
+    materials: gltf::iter::Materials,
+) -> (Vec<DiskMaterialLayout>, Vec<DiskMaterialInstance>) {
+    let mut out_material_layouts = Vec::<DiskMaterialLayout>::with_capacity(materials.len());
+    let mut out_material_instances = Vec::with_capacity(materials.len());
 
     for material in materials {
         let mut images = Vec::with_capacity(5);
@@ -29,15 +31,14 @@ pub fn import_material_instances(static_scenery: &mut DiskStaticScenery, materia
         instance_texture!(images, material.occlusion_texture());
         instance_texture!(images, material.emissive_texture());
 
-        let material_layout = match static_scenery
-            .material_layouts
+        let material_layout = match out_material_layouts
             .iter()
             .position(|item| item.image_count == images.len())
         {
             Some(id) => id,
             None => {
-                let new_id = static_scenery.material_layouts.len();
-                static_scenery.material_layouts.push(DiskMaterialLayout {
+                let new_id = out_material_layouts.len();
+                out_material_layouts.push(DiskMaterialLayout {
                     image_count: images.len(),
                 });
                 new_id
@@ -72,13 +73,15 @@ pub fn import_material_instances(static_scenery: &mut DiskStaticScenery, materia
             ],
             unused: [0.0f32; 4],
         };
-        let material_data = bytemuck::bytes_of(&packed_data).to_vec();
-        assert_eq!(material_data.len(), 64);
+        let material_instance_data = bytemuck::bytes_of(&packed_data).to_vec();
+        assert_eq!(material_instance_data.len(), 64);
 
-        static_scenery.material_instances.push(DiskMaterialInstance {
+        out_material_instances.push(DiskMaterialInstance {
             material_layout,
-            material_data,
+            material_instance_data,
             images,
         });
     }
+
+    (out_material_layouts, out_material_instances)
 }

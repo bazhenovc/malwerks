@@ -9,7 +9,12 @@ default-run = "malwerks_playground"
 
 [dependencies]
 malwerks_vk = { path = "../malwerks_vk" }
+malwerks_resources = { path = "../malwerks_resources" }
 malwerks_render = { path = "../malwerks_render" }
+malwerks_gltf = { path = "../malwerks_gltf" }
+
+# TODO: Decouple malwerks_external
+malwerks_external = { path = "../malwerks_external" }
 
 ash = "*"
 log = "*"
@@ -21,10 +26,12 @@ gilrs = "*"
 puffin = "*"
 puffin-imgui = "*"
 structopt = "*"
+ultraviolet = "*"
 
-[build-dependencies]
-depgraph = "*"
+# TODO: Decouple serde, bincode and shaderc dependencies
+serde = { version = "*", features = ["derive"] }
 shaderc = "*"
+bincode = "*"
 
 [target.'cfg(windows)'.dependencies]
 winapi = "*"

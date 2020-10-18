@@ -11,6 +11,9 @@ struct CommandLineOptions {
     #[structopt(short = "i", long = "input", parse(from_os_str))]
     input_file: std::path::PathBuf,
 
+    #[structopt(short = "t", long = "temp_folder", parse(from_os_str))]
+    temp_folder: std::path::PathBuf,
+
     #[structopt(short = "o", long = "output")]
     output_file: Option<std::path::PathBuf>,
 
@@ -30,23 +33,22 @@ fn main() {
         CommandLineOptions::from_args()
     };
 
-    let static_scenery = import_gltf(&command_line.input_file);
-
+    let disk_bundle = import_gltf_bundle(&command_line.input_file, &command_line.temp_folder);
     let output_file = if let Some(file) = command_line.output_file {
         file
     } else {
-        std::path::Path::new(&command_line.input_file).with_extension("world")
+        std::path::Path::new(&command_line.input_file).with_extension("render_bundle")
     };
     log::info!(
         "saving {} buffers, {} meshes, {} images, {} samplers, {} layouts, {} instances, {} materials, {} buckets to {:?}",
-        static_scenery.buffers.len(),
-        static_scenery.meshes.len(),
-        static_scenery.images.len(),
-        static_scenery.samplers.len(),
-        static_scenery.material_layouts.len(),
-        static_scenery.material_instances.len(),
-        static_scenery.materials.len(),
-        static_scenery.buckets.len(),
+        disk_bundle.buffers.len(),
+        disk_bundle.meshes.len(),
+        disk_bundle.images.len(),
+        disk_bundle.samplers.len(),
+        disk_bundle.material_layouts.len(),
+        disk_bundle.material_instances.len(),
+        disk_bundle.materials.len(),
+        disk_bundle.buckets.len(),
         &output_file,
     );
     {
@@ -56,6 +58,8 @@ fn main() {
             .truncate(true)
             .open(output_file)
             .expect("failed to open output file");
-        static_scenery.serialize_into(std::io::BufWriter::new(file), command_line.compression_level);
+        disk_bundle
+            .serialize_into(std::io::BufWriter::new(file), command_line.compression_level)
+            .expect("failed to serialize render bundle");
     }
 }

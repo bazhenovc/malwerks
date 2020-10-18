@@ -3,16 +3,15 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_render::*;
-
 use crate::camera_state::*;
+
+use crate::demo_pbr_forward_lit::*;
 
 pub fn show_debug_window<'a>(
     ui: &imgui::Ui<'a>,
     _window: &winit::window::Window,
     gilrs: &gilrs::Gilrs,
     camera_state: &mut CameraState,
-    render_world: &mut RenderWorld,
     average_frame_time: f32,
     average_fps: f32,
 ) {
@@ -73,35 +72,38 @@ pub fn show_debug_window<'a>(
                     }
                 }
             }
+        });
+}
 
-            // cluster culling
-            if CollapsingHeader::new(im_str!("Mesh cluster culling"))
-                .default_open(true)
-                .build(ui)
-            {
-                static mut APEX_CULLING_ENABLED: bool = true;
-                if ui.checkbox(im_str!("Apex culling enabled"), unsafe { &mut APEX_CULLING_ENABLED }) {
-                    render_world.debug_set_apex_culling_enabled(unsafe { APEX_CULLING_ENABLED });
-                }
+pub fn show_gltf_import_window<'a>(ui: &imgui::Ui<'a>, gltf_import_parameters: &mut GltfImportParameters) {
+    use imgui::*;
 
-                static mut APEX_CULLING_PAUSED: bool = false;
-                if ui.checkbox(im_str!("Apex culling paused"), unsafe { &mut APEX_CULLING_PAUSED }) {
-                    render_world.debug_set_apex_culling_paused(unsafe { APEX_CULLING_PAUSED });
-                }
+    puffin::profile_function!();
 
-                static mut OCCLUSION_CULLING_ENABLED: bool = true;
-                if ui.checkbox(im_str!("Occlusion culling enabled"), unsafe {
-                    &mut OCCLUSION_CULLING_ENABLED
-                }) {
-                    render_world.debug_set_occlusion_culling_enabled(unsafe { OCCLUSION_CULLING_ENABLED });
-                }
+    Window::new(im_str!("GLTF tools"))
+        .always_auto_resize(true)
+        .build(ui, || {
+            ui.checkbox(im_str!("Force import"), &mut gltf_import_parameters.gltf_force_import);
+            if ui.button(im_str!("Lantern.gltf"), [0.0, 0.0]) {
+                let mut source_path = gltf_import_parameters.gltf_file.clone();
+                source_path.pop();
 
-                static mut OCCLUSION_CULLING_PAUSED: bool = false;
-                if ui.checkbox(im_str!("Occlusion culling paused"), unsafe {
-                    &mut OCCLUSION_CULLING_PAUSED
-                }) {
-                    render_world.debug_set_occlusion_culling_paused(unsafe { OCCLUSION_CULLING_PAUSED });
-                }
+                gltf_import_parameters.gltf_file = source_path.join("..").join("lantern").join("Lantern.gltf");
+                gltf_import_parameters.gltf_queue_import = true;
+            }
+            if ui.button(im_str!("Sponza.gltf"), [0.0, 0.0]) {
+                let mut source_path = gltf_import_parameters.gltf_file.clone();
+                source_path.pop();
+
+                gltf_import_parameters.gltf_file = source_path.join("..").join("sponza").join("Sponza.gltf");
+                gltf_import_parameters.gltf_queue_import = true;
+            }
+            if ui.button(im_str!("housetest2.gltf"), [0.0, 0.0]) {
+                let mut source_path = gltf_import_parameters.gltf_file.clone();
+                source_path.pop();
+
+                gltf_import_parameters.gltf_file = source_path.join("..").join("house_test").join("housetest2.gltf");
+                gltf_import_parameters.gltf_queue_import = true;
             }
         });
 }
