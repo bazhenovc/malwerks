@@ -6,7 +6,7 @@
 use malwerks_resources::*;
 use malwerks_vk::*;
 
-pub struct RenderMaterialStages {
+pub struct MaterialShaderModules {
     pub vertex_stage: vk::ShaderModule,
     pub geometry_stage: vk::ShaderModule,
     pub tessellation_control_stage: vk::ShaderModule,
@@ -14,7 +14,7 @@ pub struct RenderMaterialStages {
     pub fragment_stage: vk::ShaderModule,
 }
 
-pub struct RenderRayTracingStages {
+pub struct RayTracingShaderModules {
     pub ray_generation_stage: vk::ShaderModule,
     pub ray_closest_hit_stage: vk::ShaderModule,
     pub ray_any_hit_stage: vk::ShaderModule,
@@ -22,17 +22,17 @@ pub struct RenderRayTracingStages {
     pub intersection_stage: vk::ShaderModule,
 }
 
-pub enum RenderShaderStages {
-    Material(RenderMaterialStages),
-    RayTracing(RenderRayTracingStages),
+pub enum ShaderModules {
+    Material(MaterialShaderModules),
+    RayTracing(RayTracingShaderModules),
     Compute(vk::ShaderModule),
 }
 
-pub struct RenderStageBundle {
-    pub shader_stages: Vec<RenderShaderStages>,
+pub struct ShaderModuleBundle {
+    pub shader_stages: Vec<ShaderModules>,
 }
 
-impl RenderStageBundle {
+impl ShaderModuleBundle {
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         macro_rules! destroy_shader_stage {
             ($stage: expr) => {
@@ -43,7 +43,7 @@ impl RenderStageBundle {
         }
         for stage in &self.shader_stages {
             match stage {
-                RenderShaderStages::Material(material_stage) => {
+                ShaderModules::Material(material_stage) => {
                     destroy_shader_stage!(material_stage.vertex_stage);
                     destroy_shader_stage!(material_stage.geometry_stage);
                     destroy_shader_stage!(material_stage.tessellation_control_stage);
@@ -51,7 +51,7 @@ impl RenderStageBundle {
                     destroy_shader_stage!(material_stage.fragment_stage);
                 }
 
-                RenderShaderStages::RayTracing(ray_tracing_stage) => {
+                ShaderModules::RayTracing(ray_tracing_stage) => {
                     destroy_shader_stage!(ray_tracing_stage.ray_generation_stage);
                     destroy_shader_stage!(ray_tracing_stage.ray_closest_hit_stage);
                     destroy_shader_stage!(ray_tracing_stage.ray_any_hit_stage);
@@ -59,7 +59,7 @@ impl RenderStageBundle {
                     destroy_shader_stage!(ray_tracing_stage.intersection_stage);
                 }
 
-                RenderShaderStages::Compute(compute_stage) => {
+                ShaderModules::Compute(compute_stage) => {
                     destroy_shader_stage!(*compute_stage);
                 }
             }
@@ -87,7 +87,7 @@ impl RenderStageBundle {
                         create_shader_stage!(material_stage.tessellation_evaluation_stage);
                     let fragment_stage = create_shader_stage!(material_stage.fragment_stage);
 
-                    RenderShaderStages::Material(RenderMaterialStages {
+                    ShaderModules::Material(MaterialShaderModules {
                         vertex_stage,
                         geometry_stage,
                         tessellation_control_stage,
@@ -103,7 +103,7 @@ impl RenderStageBundle {
                     let ray_miss_stage = create_shader_stage!(ray_tracing.ray_miss_stage);
                     let intersection_stage = create_shader_stage!(ray_tracing.intersection_stage);
 
-                    RenderShaderStages::RayTracing(RenderRayTracingStages {
+                    ShaderModules::RayTracing(RayTracingShaderModules {
                         ray_generation_stage,
                         ray_closest_hit_stage,
                         ray_any_hit_stage,
@@ -115,11 +115,11 @@ impl RenderStageBundle {
                 DiskShaderStages::Compute(compute) => {
                     let compute_stage = create_shader_stage!(compute);
 
-                    RenderShaderStages::Compute(compute_stage)
+                    ShaderModules::Compute(compute_stage)
                 }
             });
         }
 
-        RenderStageBundle { shader_stages }
+        ShaderModuleBundle { shader_stages }
     }
 }

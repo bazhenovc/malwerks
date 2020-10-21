@@ -3,33 +3,31 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_resources::*;
 use malwerks_vk::*;
 
-use crate::render_bundle::*;
 use crate::render_layer::*;
-use crate::render_stage_bundle::*;
+use crate::resource_bundle::*;
+use crate::shader_module_bundle::*;
 
-pub struct RenderStateBundleParameters<'a> {
-    pub source_bundle: &'a DiskRenderBundle,
-    pub render_bundle: &'a RenderBundle,
-    pub render_stage_bundle: &'a RenderStageBundle,
+pub struct PipelineBundleParameters<'a> {
+    pub resource_bundle: &'a ResourceBundle,
+    pub shader_module_bundle: &'a ShaderModuleBundle,
     pub render_layer: &'a RenderLayer,
 
     pub descriptor_set_layouts: &'a [vk::DescriptorSetLayout],
 }
 
-pub struct RenderStateBundle {
+pub struct PipelineBundle {
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_layout: vk::DescriptorSetLayout,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
 
     pub pipeline_cache: vk::PipelineCache,
     pub pipeline_layouts: Vec<vk::PipelineLayout>, // directly maps to `materials` in the render bundle
-    pub pipeline_states: Vec<vk::Pipeline>,        // directly maps to `materials` in the render bundle
+    pub pipelines: Vec<vk::Pipeline>,              // directly maps to `materials` in the render bundle
 }
 
-impl RenderStateBundle {
+impl PipelineBundle {
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_layout);
@@ -37,18 +35,17 @@ impl RenderStateBundle {
         for pipeline_layout in &self.pipeline_layouts {
             factory.destroy_pipeline_layout(*pipeline_layout);
         }
-        for pipeline in &self.pipeline_states {
+        for pipeline in &self.pipelines {
             factory.destroy_pipeline(*pipeline);
         }
     }
 
-    pub fn new<'a>(parameters: &RenderStateBundleParameters<'a>, factory: &mut DeviceFactory) -> Self {
+    pub fn new<'a>(parameters: &PipelineBundleParameters<'a>, factory: &mut DeviceFactory) -> Self {
         let (descriptor_pool, descriptor_layout, descriptor_sets) =
-            initialize_descriptor_pool(parameters.render_bundle, factory);
-        let (pipeline_cache, pipeline_layouts, pipeline_states) = initialize_pipelines(
-            parameters.source_bundle,
-            parameters.render_bundle,
-            parameters.render_stage_bundle,
+            initialize_descriptor_pool(parameters.resource_bundle, factory);
+        let (pipeline_cache, pipeline_layouts, pipelines) = initialize_pipelines(
+            parameters.resource_bundle,
+            parameters.shader_module_bundle,
             parameters.render_layer,
             descriptor_layout,
             parameters.descriptor_set_layouts,
@@ -62,17 +59,17 @@ impl RenderStateBundle {
 
             pipeline_cache,
             pipeline_layouts,
-            pipeline_states,
+            pipelines,
         }
     }
 }
 
 fn initialize_descriptor_pool(
-    render_bundle: &RenderBundle,
+    resource_bundle: &ResourceBundle,
     factory: &mut DeviceFactory,
 ) -> (vk::DescriptorPool, vk::DescriptorSetLayout, Vec<vk::DescriptorSet>) {
     let mut render_instance_count = 0;
-    for bucket in &render_bundle.buckets {
+    for bucket in &resource_bundle.buckets {
         render_instance_count += bucket.instances.len();
     }
 
@@ -108,14 +105,14 @@ fn initialize_descriptor_pool(
     let mut descriptor_writes = Vec::with_capacity(render_instance_count);
     {
         let mut current_descriptor_set = 0;
-        for bucket in &render_bundle.buckets {
+        for bucket in &resource_bundle.buckets {
             let mut current_offset = 0;
             for instance in &bucket.instances {
                 let range = instance.total_instance_count * std::mem::size_of::<[f32; 16]>();
                 let current_write_info = temp_write_infos.len();
                 temp_write_infos.push(
                     vk::DescriptorBufferInfo::builder()
-                        .buffer(render_bundle.buffers[bucket.instance_transform_buffer].0)
+                        .buffer(resource_bundle.buffers[bucket.instance_transform_buffer].0)
                         .offset(current_offset as _)
                         .range(range as _)
                         .build(),
@@ -140,27 +137,26 @@ fn initialize_descriptor_pool(
 }
 
 fn initialize_pipelines(
-    source_bundle: &DiskRenderBundle,
-    render_bundle: &RenderBundle,
-    render_stage_bundle: &RenderStageBundle,
+    resource_bundle: &ResourceBundle,
+    shader_module_bundle: &ShaderModuleBundle,
     render_layer: &RenderLayer,
     descriptor_layout: vk::DescriptorSetLayout,
     extra_descriptor_layouts: &[vk::DescriptorSetLayout],
     factory: &mut DeviceFactory,
 ) -> (vk::PipelineCache, Vec<vk::PipelineLayout>, Vec<vk::Pipeline>) {
     assert!(
-        render_stage_bundle.shader_stages.len() == source_bundle.materials.len(),
+        shader_module_bundle.shader_stages.len() == resource_bundle.materials.len(),
         "incompatible stage bundle, shader stages are not directly mapped to bundle materials"
     );
     let mut max_vertex_attributes = 0;
-    for material in &source_bundle.materials {
+    for material in &resource_bundle.materials {
         max_vertex_attributes = max_vertex_attributes.max(material.vertex_format.len());
     }
 
     let mut max_shader_stages = 0;
-    for stages in &render_stage_bundle.shader_stages {
+    for stages in &shader_module_bundle.shader_stages {
         match stages {
-            RenderShaderStages::Material(material_stage) => {
+            ShaderModules::Material(material_stage) => {
                 let mut stage_count = 0;
                 stage_count += (material_stage.vertex_stage != vk::ShaderModule::null()) as usize;
                 stage_count += (material_stage.geometry_stage != vk::ShaderModule::null()) as usize;
@@ -175,22 +171,22 @@ fn initialize_pipelines(
         }
     }
 
-    let mut temp_shader_stages = Vec::with_capacity(source_bundle.materials.len() * max_shader_stages);
-    let mut temp_vertex_bindings = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_attributes = Vec::with_capacity(source_bundle.materials.len() * max_vertex_attributes);
-    let mut temp_attachments = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_dynamic_state_values = Vec::with_capacity(source_bundle.materials.len() * 2);
+    let mut temp_shader_stages = Vec::with_capacity(resource_bundle.materials.len() * max_shader_stages);
+    let mut temp_vertex_bindings = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_attributes = Vec::with_capacity(resource_bundle.materials.len() * max_vertex_attributes);
+    let mut temp_attachments = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_dynamic_state_values = Vec::with_capacity(resource_bundle.materials.len() * 2);
 
-    let mut temp_vertex_input_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_input_assembly_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_tessellation_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_viewport_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_rasterization_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_multisample_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_depth_stencil_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_color_blend_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_dynamic_states = Vec::with_capacity(source_bundle.materials.len());
-    let mut temp_pipelines = Vec::with_capacity(source_bundle.materials.len());
+    let mut temp_vertex_input_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_input_assembly_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_tessellation_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_viewport_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_rasterization_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_multisample_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_depth_stencil_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_color_blend_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_dynamic_states = Vec::with_capacity(resource_bundle.materials.len());
+    let mut temp_pipelines = Vec::with_capacity(resource_bundle.materials.len());
 
     let mut temp_descriptor_layouts = vec![vk::DescriptorSetLayout::null(); 2 + extra_descriptor_layouts.len()];
     for (layout_id, layout) in extra_descriptor_layouts.iter().enumerate() {
@@ -198,9 +194,9 @@ fn initialize_pipelines(
     }
 
     let entry_point = std::ffi::CString::new("main").unwrap();
-    let mut pipeline_layouts = Vec::with_capacity(source_bundle.materials.len());
-    for (material_id, disk_material) in source_bundle.materials.iter().enumerate() {
-        temp_descriptor_layouts[0] = render_bundle.descriptor_layouts[disk_material.material_layout];
+    let mut pipeline_layouts = Vec::with_capacity(resource_bundle.materials.len());
+    for (material_id, disk_material) in resource_bundle.materials.iter().enumerate() {
+        temp_descriptor_layouts[0] = resource_bundle.descriptor_layouts[disk_material.material_layout];
         temp_descriptor_layouts[1] = descriptor_layout;
 
         let temp_push_constant_ranges = [
@@ -224,19 +220,19 @@ fn initialize_pipelines(
         );
 
         let vertex_attributes_start = temp_attributes.len();
-        for attribute in &disk_material.vertex_format {
+        for (attribute_format, attribute_location, attribute_offset) in &disk_material.vertex_format {
             temp_attributes.push(
                 vk::VertexInputAttributeDescription::builder()
-                    .location(attribute.attribute_location)
+                    .location(*attribute_location)
                     .binding(0)
-                    .format(vk::Format::from_raw(attribute.attribute_format))
-                    .offset(attribute.attribute_offset as _)
+                    .format(*attribute_format)
+                    .offset(*attribute_offset)
                     .build(),
             );
         }
 
         let shader_stages_start = temp_shader_stages.len();
-        if let RenderShaderStages::Material(shader_modules) = &render_stage_bundle.shader_stages[material_id] {
+        if let ShaderModules::Material(shader_modules) = &shader_module_bundle.shader_stages[material_id] {
             if shader_modules.vertex_stage != vk::ShaderModule::null() {
                 temp_shader_stages.push(
                     vk::PipelineShaderStageCreateInfo::builder()
@@ -292,7 +288,7 @@ fn initialize_pipelines(
         temp_vertex_bindings.push(
             vk::VertexInputBindingDescription::builder()
                 .binding(0)
-                .stride(disk_material.vertex_stride as _)
+                .stride(disk_material.vertex_stride)
                 .input_rate(vk::VertexInputRate::VERTEX)
                 .build(),
         );
@@ -320,7 +316,7 @@ fn initialize_pipelines(
         temp_rasterization_states.push(
             vk::PipelineRasterizationStateCreateInfo::builder()
                 .line_width(1.0)
-                .cull_mode(vk::CullModeFlags::from_raw(disk_material.fragment_cull_flags))
+                .cull_mode(disk_material.fragment_cull_flags)
                 .build(),
         );
         temp_multisample_states.push(

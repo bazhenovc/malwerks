@@ -29,7 +29,17 @@ pub struct RenderBucket {
     pub instance_transform_buffer: usize,
 }
 
-pub struct RenderBundle {
+pub struct RenderMaterial {
+    pub material_layout: usize,
+
+    pub vertex_stride: u32,
+    pub vertex_format: Vec<(vk::Format, u32, u32)>, // format, location, offset
+
+    pub fragment_alpha_test: bool,
+    pub fragment_cull_flags: vk::CullModeFlags,
+}
+
+pub struct ResourceBundle {
     pub buffers: Vec<HeapAllocatedResource<vk::Buffer>>,
     pub meshes: Vec<RenderMesh>,
     pub images: Vec<HeapAllocatedResource<vk::Image>>,
@@ -40,9 +50,11 @@ pub struct RenderBundle {
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_layouts: Vec<vk::DescriptorSetLayout>, // directly maps to `material_layouts`
     pub descriptor_sets: Vec<vk::DescriptorSet>,          // directly maps to `material_instances`
+
+    pub materials: Vec<RenderMaterial>,
 }
 
-impl RenderBundle {
+impl ResourceBundle {
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         for buffer in &self.buffers {
             factory.deallocate_buffer(buffer);
@@ -74,10 +86,7 @@ impl RenderBundle {
         let (descriptor_pool, descriptor_layouts, descriptor_sets) =
             initialize_descriptor_pool(&disk_render_bundle, &image_views, &samplers, factory);
         let buckets = initialize_buckets(&disk_render_bundle, command_buffer, factory, queue);
-
-        // let material_layouts = disk_render_bundle.material_layouts;
-        // let material_instances = disk_render_bundle.material_instances;
-        // let materials = disk_render_bundle.materials;
+        let materials = initialize_materials(&disk_render_bundle);
 
         Self {
             buffers,
@@ -90,6 +99,8 @@ impl RenderBundle {
             descriptor_pool,
             descriptor_layouts,
             descriptor_sets,
+
+            materials,
         }
     }
 }
@@ -396,4 +407,33 @@ fn initialize_buckets(
     }
 
     buckets
+}
+
+fn initialize_materials(disk_render_bundle: &DiskRenderBundle) -> Vec<RenderMaterial> {
+    let mut materials = Vec::with_capacity(disk_render_bundle.materials.len());
+    for disk_material in &disk_render_bundle.materials {
+        let material_layout = disk_material.material_layout;
+
+        let vertex_stride = disk_material.vertex_stride as u32;
+        let mut vertex_format = Vec::with_capacity(disk_material.vertex_format.len());
+        for vertex_attribute in &disk_material.vertex_format {
+            vertex_format.push((
+                vk::Format::from_raw(vertex_attribute.attribute_format),
+                vertex_attribute.attribute_location,
+                vertex_attribute.attribute_offset as u32,
+            ));
+        }
+
+        let fragment_alpha_test = disk_material.fragment_alpha_test;
+        let fragment_cull_flags = vk::CullModeFlags::from_raw(disk_material.fragment_cull_flags);
+
+        materials.push(RenderMaterial {
+            material_layout,
+            vertex_stride,
+            vertex_format,
+            fragment_alpha_test,
+            fragment_cull_flags,
+        });
+    }
+    materials
 }

@@ -30,9 +30,9 @@ pub struct DemoPbrForwardLit {
     sky_box: SkyBox,
     post_process: PostProcess,
 
-    render_bundle: RenderBundle,
-    render_stage_bundle: RenderStageBundle,
-    render_state_bundle: RenderStateBundle,
+    resource_bundle: ResourceBundle,
+    shader_module_bundle: ShaderModuleBundle,
+    pipeline_bundle: PipelineBundle,
 }
 
 impl DemoPbrForwardLit {
@@ -42,9 +42,9 @@ impl DemoPbrForwardLit {
         self.sky_box.destroy(factory);
         self.post_process.destroy(factory);
 
-        self.render_bundle.destroy(factory);
-        self.render_stage_bundle.destroy(factory);
-        self.render_state_bundle.destroy(factory);
+        self.resource_bundle.destroy(factory);
+        self.shader_module_bundle.destroy(factory);
+        self.pipeline_bundle.destroy(factory);
     }
 
     pub fn new(
@@ -76,7 +76,7 @@ impl DemoPbrForwardLit {
             factory,
         );
 
-        let (render_bundle, render_stage_bundle, render_state_bundle) = import_bundles(
+        let (resource_bundle, shader_module_bundle, pipeline_bundle) = import_bundles(
             gltf,
             &shared_frame_data,
             render_shared_resources,
@@ -92,9 +92,9 @@ impl DemoPbrForwardLit {
             shared_frame_data,
             sky_box,
             post_process,
-            render_bundle,
-            render_stage_bundle,
-            render_state_bundle,
+            resource_bundle,
+            shader_module_bundle,
+            pipeline_bundle,
         }
     }
 
@@ -110,11 +110,11 @@ impl DemoPbrForwardLit {
         queue.wait_idle();
         device.wait_idle();
 
-        self.render_bundle.destroy(factory);
-        self.render_stage_bundle.destroy(factory);
-        self.render_state_bundle.destroy(factory);
+        self.resource_bundle.destroy(factory);
+        self.shader_module_bundle.destroy(factory);
+        self.pipeline_bundle.destroy(factory);
 
-        let (render_bundle, render_stage_bundle, render_state_bundle) = import_bundles(
+        let (resource_bundle, shader_module_bundle, pipeline_bundle) = import_bundles(
             gltf,
             &self.shared_frame_data,
             render_shared_resources,
@@ -125,9 +125,9 @@ impl DemoPbrForwardLit {
             queue,
         );
 
-        self.render_bundle = render_bundle;
-        self.render_stage_bundle = render_stage_bundle;
-        self.render_state_bundle = render_state_bundle;
+        self.resource_bundle = resource_bundle;
+        self.shader_module_bundle = shader_module_bundle;
+        self.pipeline_bundle = pipeline_bundle;
     }
 
     pub fn render(
@@ -174,10 +174,10 @@ impl DemoPbrForwardLit {
             );
             command_buffer.set_scissor(0, &[screen_area]);
 
-            render_bundle(
+            draw_from_bundles(
                 render_shared_resources,
-                &self.render_bundle,
-                &self.render_state_bundle,
+                &self.resource_bundle,
+                &self.pipeline_bundle,
                 command_buffer,
                 frame_context,
                 &self.shared_frame_data,
@@ -249,10 +249,10 @@ impl DemoPbrForwardLit {
     }
 }
 
-fn render_bundle(
+fn draw_from_bundles(
     render_shared_resources: &RenderSharedResources,
-    render_bundle: &RenderBundle,
-    render_state_bundle: &RenderStateBundle,
+    resource_bundle: &ResourceBundle,
+    pipeline_bundle: &PipelineBundle,
     command_buffer: &mut CommandBuffer,
     frame_context: &FrameContext,
     shared_frame_data: &SharedFrameData,
@@ -260,11 +260,11 @@ fn render_bundle(
     puffin::profile_function!();
 
     let mut render_instance_id = 0;
-    for bucket in &render_bundle.buckets {
+    for bucket in &resource_bundle.buckets {
         puffin::profile_scope!("render bucket");
 
-        let pipeline_layout = render_state_bundle.pipeline_layouts[bucket.material];
-        let pipeline = render_state_bundle.pipeline_states[bucket.material];
+        let pipeline_layout = pipeline_bundle.pipeline_layouts[bucket.material];
+        let pipeline = pipeline_bundle.pipelines[bucket.material];
 
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, pipeline);
         command_buffer.push_constants(
@@ -286,17 +286,17 @@ fn render_bundle(
                 pipeline_layout,
                 0,
                 &[
-                    render_bundle.descriptor_sets[instance.material_instance],
-                    render_state_bundle.descriptor_sets[render_instance_id],
+                    resource_bundle.descriptor_sets[instance.material_instance],
+                    pipeline_bundle.descriptor_sets[render_instance_id],
                     *shared_frame_data.get_frame_data_descriptor_set(frame_context),
                     render_shared_resources.descriptor_sets[0],
                 ],
                 &[],
             );
 
-            let mesh = &render_bundle.meshes[instance.mesh];
-            command_buffer.bind_vertex_buffers(0, &[render_bundle.buffers[mesh.vertex_buffer].0], &[0]);
-            command_buffer.bind_index_buffer(render_bundle.buffers[mesh.index_buffer.1].0, 0, mesh.index_buffer.0);
+            let mesh = &resource_bundle.meshes[instance.mesh];
+            command_buffer.bind_vertex_buffers(0, &[resource_bundle.buffers[mesh.vertex_buffer].0], &[0]);
+            command_buffer.bind_index_buffer(resource_bundle.buffers[mesh.index_buffer.1].0, 0, mesh.index_buffer.0);
             command_buffer.draw_indexed(mesh.index_count as _, instance.total_instance_count as _, 0, 0, 0);
 
             render_instance_id += 1;
@@ -313,15 +313,15 @@ fn import_bundles(
     _device: &Device,
     factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
-) -> (RenderBundle, RenderStageBundle, RenderStateBundle) {
+) -> (ResourceBundle, ShaderModuleBundle, PipelineBundle) {
     let temp_folder = gltf.gltf_temp_folder.join(&gltf.gltf_file.file_name().unwrap());
 
     let render_bundle_file = gltf
         .gltf_bundle_folder
-        .join(gltf.gltf_file.with_extension("render_bundle").file_name().unwrap());
+        .join(gltf.gltf_file.with_extension("resource_bundle").file_name().unwrap());
     let render_stage_bundle_file = gltf.gltf_bundle_folder.join(
         gltf.gltf_file
-            .with_extension("render_stage_bundle")
+            .with_extension("shader_module_bundle")
             .file_name()
             .unwrap(),
     );
@@ -347,7 +347,7 @@ fn import_bundles(
         DiskRenderBundle::deserialize_from(file).expect("failed to deserialize render bundle")
     };
 
-    let disk_render_stage_bundle = if gltf.gltf_force_import || !render_stage_bundle_file.exists() {
+    let disk_shader_stage_bundle = if gltf.gltf_force_import || !render_stage_bundle_file.exists() {
         let shader_path = gltf.gltf_shaders_folder.join("gltf_pbr_material.glsl");
         let bundle = compile_gltf_shaders(&disk_render_bundle, &shader_path, &temp_folder);
         let file = std::fs::OpenOptions::new()
@@ -368,13 +368,12 @@ fn import_bundles(
         DiskShaderStageBundle::deserialize_from(file).expect("failed to deserialize render stage bundle")
     };
 
-    let render_bundle = RenderBundle::from_disk(&disk_render_bundle, command_buffer, factory, queue);
-    let render_stage_bundle = RenderStageBundle::new(&disk_render_stage_bundle, factory);
-    let render_state_bundle = RenderStateBundle::new(
-        &RenderStateBundleParameters {
-            source_bundle: &disk_render_bundle,
-            render_bundle: &render_bundle,
-            render_stage_bundle: &render_stage_bundle,
+    let resource_bundle = ResourceBundle::from_disk(&disk_render_bundle, command_buffer, factory, queue);
+    let shader_module_bundle = ShaderModuleBundle::new(&disk_shader_stage_bundle, factory);
+    let pipeline_bundle = PipelineBundle::new(
+        &PipelineBundleParameters {
+            resource_bundle: &resource_bundle,
+            shader_module_bundle: &shader_module_bundle,
             render_layer: target_layer,
             descriptor_set_layouts: &[
                 shared_frame_data.descriptor_set_layout,
@@ -384,5 +383,5 @@ fn import_bundles(
         factory,
     );
 
-    (render_bundle, render_stage_bundle, render_state_bundle)
+    (resource_bundle, shader_module_bundle, pipeline_bundle)
 }
