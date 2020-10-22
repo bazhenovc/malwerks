@@ -20,7 +20,7 @@ use gltf_nodes::*;
 pub fn import_gltf_bundle(
     input_file: &std::path::Path,
     temp_folder: &std::path::Path,
-) -> malwerks_resources::DiskRenderBundle {
+) -> malwerks_bundles::DiskRenderBundle {
     let gltf = gltf::Gltf::open(&input_file).expect("failed to open gltf");
     let base_path = std::path::Path::new(&input_file)
         .parent()
@@ -39,7 +39,7 @@ pub fn import_gltf_bundle(
     let images = import_images(&base_path, temp_folder, gltf.materials(), gltf.images());
     let samplers = import_samplers(gltf.samplers());
 
-    malwerks_resources::DiskRenderBundle {
+    malwerks_bundles::DiskRenderBundle {
         buffers,
         meshes,
         images,

@@ -8,7 +8,7 @@ license = "MPL-2.0"
 [dependencies]
 malwerks_dds = { path = "../malwerks_dds" }
 malwerks_ply = { path = "../malwerks_ply" }
-malwerks_resources = { path = "../malwerks_resources" }
+malwerks_bundles = { path = "../malwerks_bundles" }
 malwerks_external = { path = "../malwerks_external" }
 malwerks_gltf = { path = "../malwerks_gltf" }
 

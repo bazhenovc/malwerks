@@ -4,8 +4,8 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use ash::vk;
+use malwerks_bundles::*;
 use malwerks_dds::*;
-use malwerks_resources::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ImageUsage {

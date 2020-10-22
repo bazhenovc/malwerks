@@ -21,7 +21,7 @@ mod sky_box;
 
 mod demo_pbr_forward_lit;
 
-use malwerks_render::*;
+use malwerks_core::*;
 use malwerks_vk::*;
 
 #[derive(Debug, structopt::StructOpt)]
@@ -30,8 +30,9 @@ struct CommandLineOptions {
     #[structopt(
         short = "i",
         long = "input",
-        parse(from_os_str),
-        help = "Folder where playground assets are located"
+        default_value = "./assets/",
+        help = "Folder where playground assets are located",
+        parse(from_os_str)
     )]
     input_folder: std::path::PathBuf,
 

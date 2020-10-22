@@ -1,5 +1,5 @@
 [package]
-name = "malwerks_resources"
+name = "malwerks_bundles"
 version = "0.1.0"
 authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
 edition = "2018"
