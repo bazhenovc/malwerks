@@ -8,6 +8,16 @@ use malwerks_vk::*;
 
 use crate::upload_batch::*;
 
+pub type VertexSemantic = DiskVertexSemantic;
+
+pub struct VertexAttribute {
+    pub attribute_name: String,
+    pub attribute_semantic: VertexSemantic,
+    pub attribute_format: vk::Format,
+    pub attribute_location: u32,
+    pub attribute_offset: u32,
+}
+
 pub struct RenderMesh {
     pub vertex_buffer: usize,
     pub index_buffer: (vk::IndexType, usize),
@@ -33,10 +43,13 @@ pub struct RenderMaterial {
     pub material_layout: usize,
 
     pub vertex_stride: u32,
-    pub vertex_format: Vec<(vk::Format, u32, u32)>, // format, location, offset
+    pub vertex_format: Vec<VertexAttribute>,
 
     pub fragment_alpha_test: bool,
     pub fragment_cull_flags: vk::CullModeFlags,
+
+    pub shader_image_mapping: Vec<(String, String)>, // image_name, uv_channel_name
+    pub shader_macro_definitions: Vec<(String, String)>, // name, value
 }
 
 pub struct ResourceBundle {
@@ -75,18 +88,18 @@ impl ResourceBundle {
     }
 
     pub fn from_disk(
-        disk_render_bundle: &DiskRenderBundle,
+        disk_bundle: &DiskResourceBundle,
         command_buffer: &mut CommandBuffer,
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) -> Self {
-        let buffers = initialize_buffers(&disk_render_bundle, command_buffer, factory, queue);
-        let meshes = initialize_meshes(&disk_render_bundle);
-        let (images, image_views, samplers) = initialize_images(&disk_render_bundle, command_buffer, factory, queue);
+        let buffers = initialize_buffers(&disk_bundle, command_buffer, factory, queue);
+        let meshes = initialize_meshes(&disk_bundle);
+        let (images, image_views, samplers) = initialize_images(&disk_bundle, command_buffer, factory, queue);
         let (descriptor_pool, descriptor_layouts, descriptor_sets) =
-            initialize_descriptor_pool(&disk_render_bundle, &image_views, &samplers, factory);
-        let buckets = initialize_buckets(&disk_render_bundle, command_buffer, factory, queue);
-        let materials = initialize_materials(&disk_render_bundle);
+            initialize_descriptor_pool(&disk_bundle, &image_views, &samplers, factory);
+        let buckets = initialize_buckets(&disk_bundle, command_buffer, factory, queue);
+        let materials = initialize_materials(&disk_bundle);
 
         Self {
             buffers,
@@ -106,17 +119,17 @@ impl ResourceBundle {
 }
 
 fn initialize_buffers(
-    disk_render_bundle: &DiskRenderBundle,
+    disk_bundle: &DiskResourceBundle,
     command_buffer: &mut CommandBuffer,
     factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
 ) -> Vec<HeapAllocatedResource<vk::Buffer>> {
-    log::info!("initializing {} buffers", disk_render_bundle.buffers.len());
+    log::info!("initializing {} buffers", disk_bundle.buffers.len());
 
-    let mut buffers = Vec::with_capacity(disk_render_bundle.buffers.len());
+    let mut buffers = Vec::with_capacity(disk_bundle.buffers.len());
 
     let mut upload_batch = UploadBatch::new(command_buffer);
-    for disk_buffer in &disk_render_bundle.buffers {
+    for disk_buffer in &disk_bundle.buffers {
         let buffer = factory.allocate_buffer(
             &vk::BufferCreateInfo::builder()
                 .size(disk_buffer.data.len() as _)
@@ -141,9 +154,9 @@ fn initialize_buffers(
     buffers
 }
 
-fn initialize_meshes(disk_render_bundle: &DiskRenderBundle) -> Vec<RenderMesh> {
-    let mut meshes = Vec::with_capacity(disk_render_bundle.meshes.len());
-    for disk_mesh in &disk_render_bundle.meshes {
+fn initialize_meshes(disk_bundle: &DiskResourceBundle) -> Vec<RenderMesh> {
+    let mut meshes = Vec::with_capacity(disk_bundle.meshes.len());
+    for disk_mesh in &disk_bundle.meshes {
         meshes.push(RenderMesh {
             vertex_buffer: disk_mesh.vertex_buffer,
             index_buffer: (
@@ -159,7 +172,7 @@ fn initialize_meshes(disk_render_bundle: &DiskRenderBundle) -> Vec<RenderMesh> {
 }
 
 fn initialize_images(
-    disk_render_bundle: &DiskRenderBundle,
+    disk_bundle: &DiskResourceBundle,
     command_buffer: &mut CommandBuffer,
     factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
@@ -170,15 +183,15 @@ fn initialize_images(
 ) {
     log::info!(
         "initializing {} images and {} samplers",
-        disk_render_bundle.images.len(),
-        disk_render_bundle.samplers.len()
+        disk_bundle.images.len(),
+        disk_bundle.samplers.len()
     );
 
-    let mut images = Vec::with_capacity(disk_render_bundle.images.len());
-    let mut image_views = Vec::with_capacity(disk_render_bundle.images.len());
+    let mut images = Vec::with_capacity(disk_bundle.images.len());
+    let mut image_views = Vec::with_capacity(disk_bundle.images.len());
 
     let mut upload_batch = UploadBatch::new(command_buffer);
-    for disk_image in &disk_render_bundle.images {
+    for disk_image in &disk_bundle.images {
         let image_view_type = vk::ImageViewType::from_raw(disk_image.view_type);
         let image_flags = match image_view_type {
             vk::ImageViewType::CUBE => vk::ImageCreateFlags::CUBE_COMPATIBLE,
@@ -244,8 +257,8 @@ fn initialize_images(
     }
     upload_batch.flush(factory, queue);
 
-    let mut samplers = Vec::with_capacity(disk_render_bundle.samplers.len());
-    for disk_sampler in &disk_render_bundle.samplers {
+    let mut samplers = Vec::with_capacity(disk_bundle.samplers.len());
+    for disk_sampler in &disk_bundle.samplers {
         samplers.push(
             factory.create_sampler(
                 &vk::SamplerCreateInfo::builder()
@@ -266,20 +279,20 @@ fn initialize_images(
 }
 
 fn initialize_descriptor_pool(
-    disk_render_bundle: &DiskRenderBundle,
+    disk_bundle: &DiskResourceBundle,
     image_views: &[vk::ImageView],
     samplers: &[vk::Sampler],
     factory: &mut DeviceFactory,
 ) -> (vk::DescriptorPool, Vec<vk::DescriptorSetLayout>, Vec<vk::DescriptorSet>) {
     let mut max_descriptor_image_count = 0;
-    for disk_material_layout in &disk_render_bundle.material_layouts {
+    for disk_material_layout in &disk_bundle.material_layouts {
         max_descriptor_image_count = max_descriptor_image_count.max(disk_material_layout.image_count);
     }
 
     let mut temp_bindings = Vec::with_capacity(max_descriptor_image_count);
-    let mut descriptor_set_layouts = Vec::with_capacity(disk_render_bundle.material_layouts.len());
+    let mut descriptor_set_layouts = Vec::with_capacity(disk_bundle.material_layouts.len());
 
-    for disk_material_layout in &disk_render_bundle.material_layouts {
+    for disk_material_layout in &disk_bundle.material_layouts {
         for binding_id in 0..disk_material_layout.image_count {
             temp_bindings.push(
                 vk::DescriptorSetLayoutBinding::builder()
@@ -299,13 +312,13 @@ fn initialize_descriptor_pool(
         temp_bindings.clear();
     }
 
-    let max_descriptor_count = disk_render_bundle.material_instances.len() * max_descriptor_image_count;
+    let max_descriptor_count = disk_bundle.material_instances.len() * max_descriptor_image_count;
     let mut temp_writes = Vec::with_capacity(max_descriptor_count);
     let mut temp_write_ids = Vec::with_capacity(max_descriptor_count);
     let mut temp_image_infos = Vec::with_capacity(max_descriptor_count);
-    let mut temp_per_descriptor_layouts = Vec::with_capacity(disk_render_bundle.material_instances.len());
+    let mut temp_per_descriptor_layouts = Vec::with_capacity(disk_bundle.material_instances.len());
 
-    for disk_material_instance in &disk_render_bundle.material_instances {
+    for disk_material_instance in &disk_bundle.material_instances {
         let layout = descriptor_set_layouts[disk_material_instance.material_layout];
 
         let descriptor_id = temp_per_descriptor_layouts.len();
@@ -363,14 +376,14 @@ fn initialize_descriptor_pool(
 }
 
 fn initialize_buckets(
-    disk_render_bundle: &DiskRenderBundle,
+    disk_bundle: &DiskResourceBundle,
     _command_buffer: &mut CommandBuffer,
     _factory: &mut DeviceFactory,
     _queue: &mut DeviceQueue,
 ) -> Vec<RenderBucket> {
-    let mut buckets = Vec::with_capacity(disk_render_bundle.buckets.len());
+    let mut buckets = Vec::with_capacity(disk_bundle.buckets.len());
 
-    for disk_bucket in &disk_render_bundle.buckets {
+    for disk_bucket in &disk_bundle.buckets {
         let material = disk_bucket.material;
         let mut instances = Vec::with_capacity(disk_bucket.instances.len());
 
@@ -380,7 +393,7 @@ fn initialize_buckets(
 
             let mut material_instance_data = [0u8; 64];
             {
-                let disk_data = &disk_render_bundle.material_instances[material_instance].material_instance_data;
+                let disk_data = &disk_bundle.material_instances[material_instance].material_instance_data;
                 assert_eq!(disk_data.len(), 64);
 
                 material_instance_data.copy_from_slice(disk_data);
@@ -409,23 +422,28 @@ fn initialize_buckets(
     buckets
 }
 
-fn initialize_materials(disk_render_bundle: &DiskRenderBundle) -> Vec<RenderMaterial> {
-    let mut materials = Vec::with_capacity(disk_render_bundle.materials.len());
-    for disk_material in &disk_render_bundle.materials {
+fn initialize_materials(disk_bundle: &DiskResourceBundle) -> Vec<RenderMaterial> {
+    let mut materials = Vec::with_capacity(disk_bundle.materials.len());
+    for disk_material in &disk_bundle.materials {
         let material_layout = disk_material.material_layout;
 
         let vertex_stride = disk_material.vertex_stride as u32;
         let mut vertex_format = Vec::with_capacity(disk_material.vertex_format.len());
         for vertex_attribute in &disk_material.vertex_format {
-            vertex_format.push((
-                vk::Format::from_raw(vertex_attribute.attribute_format),
-                vertex_attribute.attribute_location,
-                vertex_attribute.attribute_offset as u32,
-            ));
+            vertex_format.push(VertexAttribute {
+                attribute_name: vertex_attribute.attribute_name.clone(),
+                attribute_semantic: vertex_attribute.attribute_semantic,
+                attribute_format: vk::Format::from_raw(vertex_attribute.attribute_format),
+                attribute_location: vertex_attribute.attribute_location as _,
+                attribute_offset: vertex_attribute.attribute_offset as _,
+            });
         }
 
         let fragment_alpha_test = disk_material.fragment_alpha_test;
         let fragment_cull_flags = vk::CullModeFlags::from_raw(disk_material.fragment_cull_flags);
+
+        let shader_image_mapping = disk_material.shader_image_mapping.clone();
+        let shader_macro_definitions = disk_material.shader_macro_definitions.clone();
 
         materials.push(RenderMaterial {
             material_layout,
@@ -433,6 +451,8 @@ fn initialize_materials(disk_render_bundle: &DiskRenderBundle) -> Vec<RenderMate
             vertex_format,
             fragment_alpha_test,
             fragment_cull_flags,
+            shader_image_mapping,
+            shader_macro_definitions,
         });
     }
     materials

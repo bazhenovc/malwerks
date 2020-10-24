@@ -4,11 +4,11 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use malwerks_core::*;
+use malwerks_vk::*;
 
-use crate::shared_resource_bundle::*;
-use crate::surface_pass::*;
+use crate::common_shaders::*;
 
-pub struct ImguiGraphics {
+pub struct ImguiRenderer {
     font_image: HeapAllocatedResource<vk::Image>,
     font_view: vk::ImageView,
     font_sampler: vk::Sampler,
@@ -26,7 +26,7 @@ pub struct ImguiGraphics {
     buffer_set: BufferSet,
 }
 
-impl ImguiGraphics {
+impl ImguiRenderer {
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.deallocate_image(&self.font_image);
         factory.destroy_image_view(self.font_view);
@@ -42,8 +42,8 @@ impl ImguiGraphics {
 
     pub fn new(
         imgui: &mut imgui::Context,
-        shared_resources: &DiskSharedResources,
-        pass: &SurfacePass,
+        common_shaders: &DiskCommonShaders,
+        target_layer: &RenderLayer,
         command_buffer: &mut CommandBuffer,
         _device: &mut Device,
         factory: &mut DeviceFactory,
@@ -51,12 +51,12 @@ impl ImguiGraphics {
     ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&shared_resources.imgui_vertex_stage)
+                .code(&common_shaders.imgui_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&shared_resources.imgui_fragment_stage)
+                .code(&common_shaders.imgui_fragment_stage)
                 .build(),
         );
 
@@ -249,7 +249,7 @@ impl ImguiGraphics {
                         .build(),
                 )
                 .layout(pipeline_layout)
-                .render_pass(pass.get_render_layer().get_render_pass())
+                .render_pass(target_layer.get_render_pass())
                 .subpass(0)
                 .base_pipeline_handle(vk::Pipeline::null())
                 .base_pipeline_index(0)

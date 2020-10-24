@@ -35,8 +35,9 @@ layout (push_constant) uniform PC_MaterialInstance {
 };
 
 layout (set = 3, binding = 0) uniform sampler2D PrecomputedBrdf;
-layout (set = 3, binding = 1) uniform samplerCube IemTexture;
-layout (set = 3, binding = 2) uniform samplerCube PmremTexture;
+layout (set = 3, binding = 1) uniform samplerCube ProbeTexture;
+layout (set = 3, binding = 2) uniform samplerCube IemTexture;
+layout (set = 3, binding = 3) uniform samplerCube PmremTexture;
 
 vec4 sample_base_color() {
     #ifdef HAS_BaseColorTexture

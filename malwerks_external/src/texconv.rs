@@ -30,6 +30,8 @@ pub fn compress_image(
     let dds_path = output_path.join(image_path.with_extension("dds").file_name().unwrap());
     assert_ne!(dds_path, image_path); // make sure we're not writing compressed output to the source texture
 
+    log::info!("texconv {:?} {:?} -> {:?}", image_usage, image_path, dds_path);
+
     const FORCE_TEXCONV: bool = false;
     let need_texconv = FORCE_TEXCONV || {
         let image_meta = std::fs::metadata(&image_path).expect("failed to get image file metadata");

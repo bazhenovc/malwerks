@@ -8,10 +8,6 @@ license = "MPL-2.0"
 [dependencies]
 malwerks_vk = { path = "../malwerks_vk" }
 malwerks_bundles = { path = "../malwerks_bundles" }
+
 log = "*"
 puffin = "*"
-
-[dev-dependencies]
-malwerks_dds = { path = "../malwerks_dds" }
-ash = "*"
-pretty_env_logger = "*"

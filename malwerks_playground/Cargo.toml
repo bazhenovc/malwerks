@@ -11,6 +11,7 @@ default-run = "malwerks_playground"
 malwerks_vk = { path = "../malwerks_vk" }
 malwerks_bundles = { path = "../malwerks_bundles" }
 malwerks_core = { path = "../malwerks_core" }
+malwerks_render = { path = "../malwerks_render" }
 malwerks_gltf = { path = "../malwerks_gltf" }
 
 # TODO: Decouple malwerks_external

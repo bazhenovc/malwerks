@@ -3,9 +3,10 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::camera_state::*;
+use malwerks_render::*;
+use malwerks_vk::*;
 
-use crate::demo_pbr_forward_lit::*;
+use crate::camera_state::*;
 
 pub fn show_debug_window<'a>(
     ui: &imgui::Ui<'a>,
@@ -75,35 +76,91 @@ pub fn show_debug_window<'a>(
         });
 }
 
-pub fn show_gltf_import_window<'a>(ui: &imgui::Ui<'a>, gltf_import_parameters: &mut GltfImportParameters) {
+pub fn show_pbr_forward_lit_window<'a>(
+    ui: &imgui::Ui<'a>,
+    assets_folder: &std::path::Path,
+
+    bundle_loader: &mut BundleLoader,
+    pbr_forward_lit: &mut PbrForwardLit,
+
+    device: &Device,
+    factory: &mut DeviceFactory,
+    queue: &mut DeviceQueue,
+) {
     use imgui::*;
 
-    puffin::profile_function!();
-
-    Window::new(im_str!("GLTF tools"))
+    Window::new(im_str!("PbrForwardLit"))
         .always_auto_resize(true)
         .build(ui, || {
-            ui.checkbox(im_str!("Force import"), &mut gltf_import_parameters.gltf_force_import);
-            if ui.button(im_str!("Lantern.gltf"), [0.0, 0.0]) {
-                let mut source_path = gltf_import_parameters.gltf_file.clone();
-                source_path.pop();
-
-                gltf_import_parameters.gltf_file = source_path.join("..").join("lantern").join("Lantern.gltf");
-                gltf_import_parameters.gltf_queue_import = true;
+            macro_rules! bundle_checkbox {
+                ($gltf_path: expr, $bundle_path: expr) => {{
+                    static mut BUNDLE_FLAG: bool = false;
+                    if ui.checkbox(im_str!($gltf_path), unsafe { &mut BUNDLE_FLAG }) {
+                        if unsafe { BUNDLE_FLAG } {
+                            pbr_forward_lit.add_render_bundle(
+                                $gltf_path,
+                                bundle_loader,
+                                &assets_folder.join($gltf_path),
+                                &assets_folder.join($bundle_path),
+                                device,
+                                factory,
+                                queue,
+                            );
+                        } else {
+                            pbr_forward_lit.remove_render_bundle($gltf_path, bundle_loader, device, factory, queue);
+                        }
+                    }
+                }};
             }
-            if ui.button(im_str!("Sponza.gltf"), [0.0, 0.0]) {
-                let mut source_path = gltf_import_parameters.gltf_file.clone();
-                source_path.pop();
 
-                gltf_import_parameters.gltf_file = source_path.join("..").join("sponza").join("Sponza.gltf");
-                gltf_import_parameters.gltf_queue_import = true;
-            }
-            if ui.button(im_str!("housetest2.gltf"), [0.0, 0.0]) {
-                let mut source_path = gltf_import_parameters.gltf_file.clone();
-                source_path.pop();
+            bundle_checkbox!("lantern/Lantern.gltf", "Lantern.resource_bundle");
+            bundle_checkbox!("sponza/Sponza.gltf", "Sponza.resource_bundle");
+            bundle_checkbox!("house_test/housetest2.gltf", "housetest2.resource_bundle");
 
-                gltf_import_parameters.gltf_file = source_path.join("..").join("house_test").join("housetest2.gltf");
-                gltf_import_parameters.gltf_queue_import = true;
+            let bundles = pbr_forward_lit.get_render_bundles();
+            ui.text(ImString::from(format!("Bundles: {}", bundles.len())));
+            for (bundle_name, bundle_id, shader_module_bundle, pipeline_bundle) in bundles {
+                if CollapsingHeader::new(&ImString::from(format!("Bundle {}: {}", bundle_id, bundle_name)))
+                    .default_open(true)
+                    .build(ui)
+                {
+                    let resource_bundle = bundle_loader.resolve_resource_bundle(*bundle_id);
+                    ui.text(ImString::from(format!("Buffers: {}", resource_bundle.buffers.len())));
+                    ui.text(ImString::from(format!("Meshes: {}", resource_bundle.meshes.len())));
+                    ui.text(ImString::from(format!("Images: {}", resource_bundle.images.len())));
+                    ui.text(ImString::from(format!(
+                        "Image views: {}",
+                        resource_bundle.image_views.len()
+                    )));
+                    ui.text(ImString::from(format!("Samplers: {}", resource_bundle.samplers.len())));
+                    ui.text(ImString::from(format!("Buckets: {}", resource_bundle.buffers.len())));
+                    ui.text(ImString::from(format!(
+                        "Descriptor layouts: {}",
+                        resource_bundle.descriptor_layouts.len()
+                    )));
+                    ui.text(ImString::from(format!(
+                        "Descriptor sets: {}",
+                        resource_bundle.descriptor_sets.len()
+                    )));
+                    ui.text(ImString::from(format!(
+                        "Materials: {}",
+                        resource_bundle.materials.len()
+                    )));
+
+                    ui.text(ImString::from(format!(
+                        "Shader stages: {}",
+                        shader_module_bundle.shader_stages.len()
+                    )));
+
+                    ui.text(ImString::from(format!(
+                        "Pipeline layouts: {}",
+                        pipeline_bundle.pipeline_layouts.len()
+                    )));
+                    ui.text(ImString::from(format!(
+                        "Pipelines: {}",
+                        pipeline_bundle.pipelines.len()
+                    )));
+                }
             }
         });
 }

@@ -5,7 +5,9 @@
 
 mod resource_compression;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
 pub struct DiskSampler {
     pub mag_filter: i32,     // vk::Filter pretending to be i32
     pub min_filter: i32,     // vk::Filter pretending to be i32
@@ -15,7 +17,7 @@ pub struct DiskSampler {
     pub address_mode_w: i32, // vk::SamplerAddressMode pretending to be i32
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskImage {
     pub width: u32,
     pub height: u32,
@@ -31,19 +33,19 @@ pub struct DiskImage {
     pub pixels: Vec<u8>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskMaterialLayout {
     pub image_count: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskMaterialInstance {
     pub material_layout: usize,
     pub material_instance_data: Vec<u8>, // arbitrary material data that goes into push constants
     pub images: Vec<(usize, usize)>,     // (texture_id, sampler_id)
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 pub enum DiskVertexSemantic {
     Position,
     Normal,
@@ -51,7 +53,7 @@ pub enum DiskVertexSemantic {
     Interpolated,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskVertexAttribute {
     pub attribute_name: String,
     pub attribute_semantic: DiskVertexSemantic,
@@ -60,7 +62,7 @@ pub struct DiskVertexAttribute {
     pub attribute_offset: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskMaterial {
     pub material_layout: usize,
 
@@ -74,7 +76,7 @@ pub struct DiskMaterial {
     pub shader_macro_definitions: Vec<(String, String)>, // name, value
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskBuffer {
     pub stride: u64,
     pub usage_flags: u32, // vk::BufferUsageFlags pretending to be u32
@@ -83,14 +85,14 @@ pub struct DiskBuffer {
     pub data: Vec<u8>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskRenderMesh {
     pub vertex_buffer: usize,
     pub index_buffer: (i32, usize), // vk::IndexType pretending to be i32, buffer_id
     pub index_count: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskRenderInstance {
     pub mesh: usize,
     pub material_instance: usize,
@@ -99,15 +101,15 @@ pub struct DiskRenderInstance {
     pub total_draw_count: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskRenderBucket {
     pub material: usize,
     pub instances: Vec<DiskRenderInstance>,
     pub instance_transform_buffer: usize,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct DiskRenderBundle {
+#[derive(Serialize, Deserialize)]
+pub struct DiskResourceBundle {
     pub buffers: Vec<DiskBuffer>,
     pub meshes: Vec<DiskRenderMesh>,
     pub images: Vec<DiskImage>,
@@ -118,7 +120,7 @@ pub struct DiskRenderBundle {
     pub buckets: Vec<DiskRenderBucket>,
 }
 
-impl DiskRenderBundle {
+impl DiskResourceBundle {
     pub fn serialize_into<W>(&self, writer: W, _compression_level: u32) -> Result<(), ()>
     where
         W: std::io::Write,
@@ -140,7 +142,7 @@ impl DiskRenderBundle {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskMaterialStages {
     pub vertex_stage: Vec<u32>,
     pub geometry_stage: Vec<u32>,
@@ -149,7 +151,7 @@ pub struct DiskMaterialStages {
     pub fragment_stage: Vec<u32>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskRayTracingStages {
     pub ray_generation_stage: Vec<u32>,
     pub ray_closest_hit_stage: Vec<u32>,
@@ -158,14 +160,14 @@ pub struct DiskRayTracingStages {
     pub intersection_stage: Vec<u32>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum DiskShaderStages {
     Material(DiskMaterialStages),
     RayTracing(DiskRayTracingStages),
     Compute(Vec<u32>),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DiskShaderStageBundle {
     pub shader_stages: Vec<DiskShaderStages>,
 }

@@ -1,0 +1,30 @@
+[package]
+name = "malwerks_render"
+version = "0.1.0"
+authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
+edition = "2018"
+license = "MPL-2.0"
+
+[dependencies]
+malwerks_vk = { path = "../malwerks_vk" }
+malwerks_bundles = { path = "../malwerks_bundles" }
+malwerks_core = { path = "../malwerks_core" }
+
+malwerks_gltf = { path = "../malwerks_gltf" }
+malwerks_external = { path = "../malwerks_external" }
+
+log = "*"
+puffin = "*"
+ultraviolet = "*"
+
+serde = { version = "*", features = ["derive"] }
+bincode = "*"
+shaderc = "*"
+
+#imgui = "*"
+imgui = "0.4"
+
+[dev-dependencies]
+malwerks_dds = { path = "../malwerks_dds" }
+ash = "*"
+pretty_env_logger = "*"

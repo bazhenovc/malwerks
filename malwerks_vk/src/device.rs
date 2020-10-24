@@ -328,12 +328,7 @@ impl Device {
 
     #[doc = "https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkGetFenceStatus.html"]
     pub fn get_fence_status(&self, fence: vk::Fence) -> bool {
-        unsafe {
-            match self.device.get_fence_status(fence) {
-                Ok(_) => true,
-                _ => false,
-            }
-        }
+        unsafe { matches!(self.device.get_fence_status(fence), Ok(_)) }
     }
 
     #[doc = "https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkDeviceWaitIdle.html"]

@@ -117,13 +117,13 @@ impl SurfacePass {
         self.render_layer.destroy(factory);
     }
 
-    pub fn try_get_oldest_timestamp(
-        &self,
-        frame_context: &FrameContext,
-        factory: &mut DeviceFactory,
-    ) -> Option<[u64; 2]> {
-        self.render_layer.try_get_oldest_timestamp(frame_context, factory)
-    }
+    // pub fn try_get_oldest_timestamp(
+    //     &self,
+    //     frame_context: &FrameContext,
+    //     factory: &mut DeviceFactory,
+    // ) -> Option<[u64; 2]> {
+    //     self.render_layer.try_get_oldest_timestamp(frame_context, factory)
+    // }
 
     pub fn get_image_ready_semaphore(&self, frame_context: &FrameContext) -> vk::Semaphore {
         *self.image_ready_semaphore.get(frame_context)

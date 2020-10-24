@@ -220,13 +220,13 @@ fn initialize_pipelines(
         );
 
         let vertex_attributes_start = temp_attributes.len();
-        for (attribute_format, attribute_location, attribute_offset) in &disk_material.vertex_format {
+        for attribute in &disk_material.vertex_format {
             temp_attributes.push(
                 vk::VertexInputAttributeDescription::builder()
-                    .location(*attribute_location)
+                    .location(attribute.attribute_location)
                     .binding(0)
-                    .format(*attribute_format)
-                    .offset(*attribute_offset)
+                    .format(attribute.attribute_format)
+                    .offset(attribute.attribute_offset)
                     .build(),
             );
         }

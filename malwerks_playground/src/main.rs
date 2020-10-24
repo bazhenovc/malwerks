@@ -3,25 +3,15 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-mod camera;
 mod camera_state;
 mod debug_ui;
-mod imgui_graphics;
 mod imgui_winit;
 mod input_map;
 
 mod surface_pass;
 mod surface_winit;
 
-mod forward_pass;
-mod post_process;
-mod shared_frame_data;
-mod shared_resource_bundle;
-mod sky_box;
-
-mod demo_pbr_forward_lit;
-
-use malwerks_core::*;
+use malwerks_render::*;
 use malwerks_vk::*;
 
 #[derive(Debug, structopt::StructOpt)]
@@ -34,7 +24,7 @@ struct CommandLineOptions {
         help = "Folder where playground assets are located",
         parse(from_os_str)
     )]
-    input_folder: std::path::PathBuf,
+    assets_folder: std::path::PathBuf,
 
     #[structopt(short = "v", long = "validation", help = "Enables Vulkan validation layers")]
     enable_validation: bool,
@@ -55,17 +45,6 @@ struct CommandLineOptions {
     compression_level: u32,
 }
 
-struct TemporaryCommandBuffer {
-    command_pool: vk::CommandPool,
-    command_buffer: CommandBuffer,
-}
-
-impl TemporaryCommandBuffer {
-    fn destroy(&mut self, factory: &mut DeviceFactory) {
-        factory.destroy_command_pool(self.command_pool);
-    }
-}
-
 struct Game {
     device: Device,
     factory: DeviceFactory,
@@ -74,23 +53,19 @@ struct Game {
     surface: surface_winit::SurfaceWinit,
     surface_pass: surface_pass::SurfacePass,
 
-    // TODO: remove and implement transfer queue
-    temporary_command_buffer: TemporaryCommandBuffer,
-
     imgui: imgui::Context,
     imgui_platform: imgui_winit::WinitPlatform,
-    imgui_graphics: imgui_graphics::ImguiGraphics,
-
-    gpu_profiler: GpuProfiler,
+    imgui_renderer: ImguiRenderer,
     profiler_ui: puffin_imgui::ProfilerUi,
 
-    render_shared_resources: shared_resource_bundle::RenderSharedResources,
-    gltf_import_parameters: demo_pbr_forward_lit::GltfImportParameters,
-    demo_pbr_forward_lit: demo_pbr_forward_lit::DemoPbrForwardLit,
-    frame_time: std::time::Instant,
+    bundle_loader: BundleLoader,
+    pbr_forward_lit: PbrForwardLit,
 
+    frame_time: std::time::Instant,
     input_map: input_map::InputMap,
     camera_state: camera_state::CameraState,
+
+    command_line: CommandLineOptions,
 }
 
 impl Drop for Game {
@@ -98,20 +73,21 @@ impl Drop for Game {
         self.queue.wait_idle();
         self.device.wait_idle();
 
-        self.temporary_command_buffer.destroy(&mut self.factory);
-        self.imgui_graphics.destroy(&mut self.factory);
+        self.imgui_renderer.destroy(&mut self.factory);
 
-        self.render_shared_resources.destroy(&mut self.factory);
-        self.demo_pbr_forward_lit.destroy(&mut self.factory);
+        self.pbr_forward_lit.destroy(&mut self.bundle_loader, &mut self.factory);
+        self.bundle_loader.destroy(&mut self.factory);
 
         self.surface_pass.destroy(&mut self.factory);
         self.surface.destroy(&mut self.factory);
+
+        self.queue.wait_idle();
         self.device.wait_idle();
     }
 }
 
 impl Game {
-    fn new(window: &winit::window::Window, resource_path: &std::path::Path, command_line: CommandLineOptions) -> Self {
+    fn new(window: &winit::window::Window, base_path: &std::path::Path, command_line: CommandLineOptions) -> Self {
         let mut device = Device::new(
             SurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
                 surface_winit::create_surface(entry, instance, window).expect("failed to create KHR surface")
@@ -125,113 +101,66 @@ impl Game {
         let mut queue = device.get_graphics_queue();
         let mut factory = device.create_factory();
 
-        let temporary_command_pool = factory.create_command_pool(
-            &vk::CommandPoolCreateInfo::builder()
-                .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(device.get_graphics_queue_index())
-                .build(),
-        );
-        let mut temporary_command_buffer = TemporaryCommandBuffer {
-            command_pool: temporary_command_pool,
-            command_buffer: factory.allocate_command_buffers(
-                &vk::CommandBufferAllocateInfo::builder()
-                    .command_buffer_count(1)
-                    .command_pool(temporary_command_pool)
-                    .level(vk::CommandBufferLevel::PRIMARY)
-                    .build(),
-            )[0],
-        };
-
         let surface = surface_winit::SurfaceWinit::new(&device);
         let surface_pass = surface_pass::SurfacePass::new(&surface, &device, &mut factory);
         let surface_size = window.inner_size();
 
         log::info!("surface size: {:?}", surface_size);
 
-        let shaders_folder = resource_path.join("malwerks_shaders");
-        let shared_temp_path = resource_path.join("target").join("temp");
-        let shared_bundle_path = resource_path.join("assets").join("shared_resources.bundle");
-        let shared_resource_bundle = if command_line.force_import || !shared_bundle_path.exists() {
-            log::info!("generating shared_resources.bundle");
-            let shared_resources_path = command_line.input_folder.join("shared_resources");
-            let temp_path = shared_temp_path.join("shared_resources.bundle");
-            let bundle = shared_resource_bundle::import_shared_resources(&shared_resources_path, &temp_path);
-
-            let file = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(shared_bundle_path)
-                .expect("failed to open shared bundle file for writing");
-            bundle
-                .serialize_into(file, command_line.compression_level)
-                .expect("failed to serialize shared resource bundle");
-            bundle
-        } else {
-            let file = std::fs::OpenOptions::new()
-                .read(true)
-                .open(shared_bundle_path)
-                .expect("failed to open shared bundle file for reading");
-            shared_resource_bundle::DiskSharedResources::deserialize_from(file)
-                .expect("failed to deserialize shared resources")
-        };
-        let render_shared_resources = shared_resource_bundle::RenderSharedResources::new(
-            &shared_resource_bundle,
-            &mut temporary_command_buffer.command_buffer,
-            &mut factory,
-            &mut queue,
-        );
-
-        let gltf_import_parameters = demo_pbr_forward_lit::GltfImportParameters {
-            gltf_file: resource_path.join("assets").join("lantern").join("Lantern.gltf"),
-            gltf_bundle_folder: resource_path.join("assets").into(),
-            gltf_temp_folder: shared_temp_path,
-            gltf_force_import: command_line.force_import,
-            gltf_shaders_folder: shaders_folder,
-            gltf_bundle_compression_level: command_line.compression_level,
-            gltf_queue_import: false,
-        };
-
-        let demo_pbr_forward_lit = demo_pbr_forward_lit::DemoPbrForwardLit::new(
-            &gltf_import_parameters,
-            &shared_resource_bundle,
-            &render_shared_resources,
-            (surface_size.width, surface_size.height),
-            surface_pass.get_render_layer(),
-            &mut temporary_command_buffer.command_buffer,
+        let mut bundle_loader = BundleLoader::new(
+            &BundleLoaderParameters {
+                bundle_compression_level: command_line.compression_level,
+                temporary_folder: &command_line.assets_folder.join("temporary_folder"),
+                base_path,
+                shader_bundle_path: &command_line.assets_folder.join("common_shaders.bundle"),
+                pbr_resource_folder: &command_line.assets_folder.join("pbr_resources"),
+            },
             &device,
             &mut factory,
             &mut queue,
         );
 
+        let pbr_forward_lit = PbrForwardLit::new(
+            &PbrForwardLitParameters {
+                render_width: surface_size.width,
+                render_height: surface_size.height,
+                target_layer: Some(surface_pass.get_render_layer()),
+                bundle_loader: &bundle_loader,
+            },
+            &device,
+            &mut factory,
+        );
+        // pbr_forward_lit.add_render_bundle(
+        //     &mut bundle_loader,
+        //     &command_line.assets_folder.join("lantern/Lantern.gltf"),
+        //     &command_line.assets_folder.join("Lantern.resource_bundle"),
+        //     &device,
+        //     &mut factory,
+        //     &mut queue,
+        // );
+
         let mut imgui = imgui::Context::create();
         let mut imgui_platform = imgui_winit::WinitPlatform::init(&mut imgui);
-        let imgui_graphics = imgui_graphics::ImguiGraphics::new(
+        let imgui_renderer = bundle_loader.create_imgui_renderer(
             &mut imgui,
-            &shared_resource_bundle,
-            &surface_pass,
-            &mut temporary_command_buffer.command_buffer,
+            surface_pass.get_render_layer(),
             &mut device,
             &mut factory,
             &mut queue,
         );
 
-        {
-            let dpi_factor = 1.0; //window.scale_factor() as f32;
-
-            imgui_platform.attach_window(imgui.io_mut(), &window, imgui_winit::HiDpiMode::Locked(1.0));
-            imgui.io_mut().font_global_scale = dpi_factor;
-            imgui.io_mut().config_flags |= imgui::ConfigFlags::NO_MOUSE_CURSOR_CHANGE;
-            imgui.fonts().add_font(&[imgui::FontSource::TtfData {
-                data: include_bytes!("../../assets/fonts/Roboto-Regular.ttf"),
-                size_pixels: 13.0 * dpi_factor,
-                config: None,
-            }]);
-        }
-        imgui.set_ini_filename(None);
+        let dpi = 1.0f32; //window.scale_factor() as f32;
+        imgui_platform.attach_window(imgui.io_mut(), &window, imgui_winit::HiDpiMode::Locked(dpi as f64));
+        imgui.io_mut().font_global_scale = dpi;
+        imgui.io_mut().config_flags |= imgui::ConfigFlags::NO_MOUSE_CURSOR_CHANGE;
+        imgui.fonts().add_font(&[imgui::FontSource::TtfData {
+            data: include_bytes!("../../assets/fonts/Roboto-Regular.ttf"),
+            size_pixels: 13.0 * dpi,
+            config: None,
+        }]);
+        imgui.set_ini_filename(Some(base_path.join("target").join("imgui.ini")));
 
         puffin::set_scopes_on(true);
-        let gpu_profiler = GpuProfiler::default();
         let profiler_ui = puffin_imgui::ProfilerUi::default();
 
         let input_map = {
@@ -267,25 +196,23 @@ impl Game {
             device,
             factory,
             queue,
-            temporary_command_buffer,
             surface,
             surface_pass,
             imgui,
             imgui_platform,
-            imgui_graphics,
-            gpu_profiler,
+            imgui_renderer,
             profiler_ui,
-            render_shared_resources,
-            gltf_import_parameters,
-            demo_pbr_forward_lit,
+            bundle_loader,
+            pbr_forward_lit,
             frame_time: std::time::Instant::now(),
             input_map,
-            camera_state: camera_state::CameraState::new(camera::Viewport {
+            camera_state: camera_state::CameraState::new(Viewport {
                 x: 0,
                 y: 0,
                 width: surface_size.width,
                 height: surface_size.height,
             }),
+            command_line,
         }
     }
 
@@ -309,26 +236,6 @@ impl Game {
         (*puffin::GlobalProfiler::lock()).new_frame();
 
         let frame_context = self.device.begin_frame();
-        {
-            puffin::profile_scope!("gather_gpu_profile");
-            let demo_timestamps = self
-                .demo_pbr_forward_lit
-                .try_get_oldest_timestamps(&frame_context, &mut self.factory);
-            for scope in demo_timestamps.iter() {
-                let scope_offset = self.gpu_profiler.begin_scope(scope.0, scope.1[0]);
-                self.gpu_profiler.end_scope(scope_offset, scope.1[1]);
-            }
-
-            if let Some(surface_pass_scope) = self
-                .surface_pass
-                .try_get_oldest_timestamp(&frame_context, &mut self.factory)
-            {
-                let scope_offset = self.gpu_profiler.begin_scope("Final", surface_pass_scope[0]);
-                self.gpu_profiler.end_scope(scope_offset, surface_pass_scope[1]);
-            }
-            self.gpu_profiler.report_frame();
-        }
-
         let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
         let surface_layer = self.surface_pass.get_render_layer_mut();
 
@@ -354,14 +261,14 @@ impl Game {
                 // setup render layers
                 surface_layer.add_dependency(
                     &frame_context,
-                    self.demo_pbr_forward_lit.get_final_layer(),
+                    self.pbr_forward_lit.get_render_layer(),
                     vk::PipelineStageFlags::FRAGMENT_SHADER,
                 );
 
                 // render world
                 self.camera_state.update(time_delta);
-                self.demo_pbr_forward_lit.render(
-                    &self.render_shared_resources,
+                self.pbr_forward_lit.render(
+                    &self.bundle_loader,
                     self.camera_state.get_camera(),
                     &frame_context,
                     &mut self.device,
@@ -381,7 +288,7 @@ impl Game {
                 surface_layer
                     .add_wait_condition(image_ready_semaphore, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
                 surface_layer.begin_command_buffer(&frame_context, screen_area);
-                self.demo_pbr_forward_lit
+                self.pbr_forward_lit
                     .post_process(self.camera_state.get_camera(), &frame_context, surface_layer);
             }
 
@@ -405,14 +312,21 @@ impl Game {
                         1000.0 / average_delta,
                         average_delta,
                     );
-                    debug_ui::show_gltf_import_window(&ui, &mut self.gltf_import_parameters);
+                    debug_ui::show_pbr_forward_lit_window(
+                        &ui,
+                        &self.command_line.assets_folder,
+                        &mut self.bundle_loader,
+                        &mut self.pbr_forward_lit,
+                        &self.device,
+                        &mut self.factory,
+                        &mut self.queue,
+                    );
 
                     let _profiler_window_open = self.profiler_ui.window(&ui);
-
                     //let mut demo_window_open = true;
                     //ui.show_demo_window(&mut demo_window_open);
 
-                    self.imgui_graphics.draw(
+                    self.imgui_renderer.draw(
                         &frame_context,
                         &mut self.factory,
                         surface_layer.get_command_buffer(&frame_context),
@@ -433,25 +347,11 @@ impl Game {
             );
             self.device.end_frame(frame_context);
         }
-
-        {
-            if self.gltf_import_parameters.gltf_queue_import {
-                self.demo_pbr_forward_lit.import_bundles(
-                    &self.gltf_import_parameters,
-                    &self.render_shared_resources,
-                    &mut self.temporary_command_buffer.command_buffer,
-                    &self.device,
-                    &mut self.factory,
-                    &mut self.queue,
-                );
-                self.gltf_import_parameters.gltf_queue_import = false;
-            }
-        }
     }
 }
 
 fn main() {
-    let resource_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
+    let base_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
         std::env::set_var("RUST_LOG", "info");
         std::path::PathBuf::from(manifest_path).join("..")
     } else {
@@ -459,8 +359,7 @@ fn main() {
     };
 
     pretty_env_logger::init();
-
-    log::info!("resource path set to {:?}", &resource_path);
+    log::info!("base path set to {:?}", &base_path);
 
     let command_line = {
         use structopt::StructOpt;
@@ -487,7 +386,7 @@ fn main() {
         log::info!("gamepad detected: {} {:?}", gamepad.name(), gamepad.power_info());
     }
 
-    let mut game = Game::new(&window, &resource_path, command_line);
+    let mut game = Game::new(&window, &base_path, command_line);
 
     // run events loop
     event_loop.run(move |event, _, control_flow| {

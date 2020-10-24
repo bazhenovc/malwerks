@@ -8,19 +8,17 @@ mod gltf_material_instances;
 mod gltf_materials;
 mod gltf_meshes;
 mod gltf_nodes;
-mod gltf_shaders;
 mod gltf_shared;
 
 use gltf_images::*;
 use gltf_material_instances::*;
 use gltf_meshes::*;
 use gltf_nodes::*;
-// use gltf_shaders::*;
 
 pub fn import_gltf_bundle(
     input_file: &std::path::Path,
     temp_folder: &std::path::Path,
-) -> malwerks_bundles::DiskRenderBundle {
+) -> malwerks_bundles::DiskResourceBundle {
     let gltf = gltf::Gltf::open(&input_file).expect("failed to open gltf");
     let base_path = std::path::Path::new(&input_file)
         .parent()
@@ -39,7 +37,7 @@ pub fn import_gltf_bundle(
     let images = import_images(&base_path, temp_folder, gltf.materials(), gltf.images());
     let samplers = import_samplers(gltf.samplers());
 
-    malwerks_bundles::DiskRenderBundle {
+    malwerks_bundles::DiskResourceBundle {
         buffers,
         meshes,
         images,
@@ -50,5 +48,3 @@ pub fn import_gltf_bundle(
         buckets,
     }
 }
-
-pub use gltf_shaders::compile_gltf_shaders;

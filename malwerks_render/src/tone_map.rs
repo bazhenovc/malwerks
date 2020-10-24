@@ -3,12 +3,13 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_core::*;
 use malwerks_vk::*;
 
-use crate::shared_frame_data::*;
-use crate::shared_resource_bundle::*;
+use crate::common_shaders::*;
 
-pub struct SkyBox {
+pub struct ToneMap {
+    point_sampler: vk::Sampler,
     linear_sampler: vk::Sampler,
 
     descriptor_pool: vk::DescriptorPool,
@@ -22,22 +23,22 @@ pub struct SkyBox {
     pipeline: vk::Pipeline,
 }
 
-impl SkyBox {
-    pub fn from_disk(
-        shared_resources: &DiskSharedResources,
-        render_shared_resources: &RenderSharedResources,
-        shared_frame_data: &SharedFrameData,
+impl ToneMap {
+    pub fn new(
+        common_shaders: &DiskCommonShaders,
+        source_layer: &RenderLayer,
+        source_image: usize,
         target_layer: &RenderLayer,
         factory: &mut DeviceFactory,
     ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&shared_resources.skybox_vertex_stage)
+                .code(&common_shaders.tone_map_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&shared_resources.skybox_fragment_stage)
+                .code(&common_shaders.tone_map_fragment_stage)
                 .build(),
         );
 
@@ -51,14 +52,20 @@ impl SkyBox {
             .module(frag_module)
             .stage(vk::ShaderStageFlags::FRAGMENT);
 
+        let point_sampler = factory.create_sampler(
+            &vk::SamplerCreateInfo::builder()
+                .mag_filter(vk::Filter::NEAREST)
+                .min_filter(vk::Filter::NEAREST)
+                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+                .build(),
+        );
         let linear_sampler = factory.create_sampler(
             &vk::SamplerCreateInfo::builder()
                 .mag_filter(vk::Filter::LINEAR)
                 .min_filter(vk::Filter::LINEAR)
                 .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
                 .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .min_lod(0.0)
-                .max_lod(std::f32::MAX)
                 .build(),
         );
 
@@ -66,7 +73,7 @@ impl SkyBox {
             &vk::DescriptorPoolCreateInfo::builder().max_sets(1).pool_sizes(&[
                 vk::DescriptorPoolSize::builder()
                     .ty(vk::DescriptorType::SAMPLER)
-                    .descriptor_count(1)
+                    .descriptor_count(2)
                     .build(),
                 vk::DescriptorPoolSize::builder()
                     .ty(vk::DescriptorType::SAMPLED_IMAGE)
@@ -84,6 +91,12 @@ impl SkyBox {
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(1)
+                    .descriptor_type(vk::DescriptorType::SAMPLER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+                    .build(),
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .descriptor_count(1)
                     .stage_flags(vk::ShaderStageFlags::FRAGMENT)
@@ -103,14 +116,20 @@ impl SkyBox {
                     .dst_set(descriptor_set)
                     .dst_binding(0)
                     .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(linear_sampler).build()])
+                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(point_sampler).build()])
                     .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_set)
                     .dst_binding(1)
+                    .descriptor_type(vk::DescriptorType::SAMPLER)
+                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(linear_sampler).build()])
+                    .build(),
+                vk::WriteDescriptorSet::builder()
+                    .dst_set(descriptor_set)
+                    .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
-                        .image_view(render_shared_resources.get_skybox_image_view())
+                        .image_view(source_layer.get_render_image(source_image).1)
                         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .build()])
                     .build(),
@@ -120,7 +139,12 @@ impl SkyBox {
 
         let pipeline_layout = factory.create_pipeline_layout(
             &vk::PipelineLayoutCreateInfo::builder()
-                .set_layouts(&[shared_frame_data.descriptor_set_layout, descriptor_set_layout])
+                .set_layouts(&[descriptor_set_layout])
+                .push_constant_ranges(&[vk::PushConstantRange::builder()
+                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .offset(0)
+                    .size(64)
+                    .build()])
                 .build(),
         );
         let pipeline = factory.create_graphics_pipelines(
@@ -155,15 +179,7 @@ impl SkyBox {
                         .rasterization_samples(vk::SampleCountFlags::TYPE_1)
                         .build(),
                 )
-                .depth_stencil_state(
-                    &vk::PipelineDepthStencilStateCreateInfo::builder()
-                        .flags(Default::default())
-                        .depth_test_enable(true)
-                        .depth_write_enable(false)
-                        .depth_compare_op(vk::CompareOp::EQUAL)
-                        .stencil_test_enable(false)
-                        .build(),
-                )
+                .depth_stencil_state(&Default::default())
                 .color_blend_state(
                     &vk::PipelineColorBlendStateCreateInfo::builder().attachments(&[
                         vk::PipelineColorBlendAttachmentState::builder()
@@ -191,6 +207,7 @@ impl SkyBox {
         )[0];
 
         Self {
+            point_sampler,
             linear_sampler,
             descriptor_pool,
             descriptor_set_layout,
@@ -203,6 +220,7 @@ impl SkyBox {
     }
 
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
+        factory.destroy_sampler(self.point_sampler);
         factory.destroy_sampler(self.linear_sampler);
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
@@ -212,23 +230,29 @@ impl SkyBox {
         factory.destroy_pipeline(self.pipeline);
     }
 
-    pub fn render(
-        &self,
-        command_buffer: &mut CommandBuffer,
-        frame_context: &FrameContext,
-        shared_frame_data: &SharedFrameData,
-    ) {
+    pub fn render(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, target_layer: &mut RenderLayer) {
+        let command_buffer = target_layer.get_command_buffer(frame_context);
+
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
             0,
-            &[
-                *shared_frame_data.get_frame_data_descriptor_set(frame_context),
-                self.descriptor_set,
-            ],
+            &[self.descriptor_set],
             &[],
         );
+        command_buffer.set_viewport(
+            0,
+            &[vk::Viewport {
+                x: screen_area.offset.x as _,
+                y: screen_area.offset.y as _,
+                width: screen_area.extent.width as _,
+                height: screen_area.extent.height as _,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }],
+        );
+        command_buffer.set_scissor(0, &[screen_area]);
         command_buffer.draw(3, 1, 0, 0);
     }
 }
