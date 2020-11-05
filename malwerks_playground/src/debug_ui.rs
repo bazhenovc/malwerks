@@ -107,7 +107,7 @@ pub fn show_pbr_forward_lit_window<'a>(
                                 queue,
                             );
                         } else {
-                            pbr_forward_lit.remove_render_bundle($gltf_path, device, factory, queue);
+                            pbr_forward_lit.remove_render_bundle($gltf_path, bundle_loader);
                         }
                     }
                 }};

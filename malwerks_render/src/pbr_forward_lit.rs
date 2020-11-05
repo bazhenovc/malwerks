@@ -312,25 +312,15 @@ impl PbrForwardLit {
         ));
     }
 
-    // TODO: Implement queued remove
-    pub fn remove_render_bundle(
-        &mut self,
-        bundle_name: &str,
-        device: &Device,
-        factory: &mut DeviceFactory,
-        queue: &mut DeviceQueue,
-    ) {
-        queue.wait_idle();
-        device.wait_idle();
-
+    pub fn remove_render_bundle(&mut self, bundle_name: &str, bundle_loader: &mut BundleLoader) {
         let mut index = 0;
         while index != self.render_bundles.len() {
             if self.render_bundles[index].0 == bundle_name {
                 log::info!("removing render bundle \"{}\"", bundle_name);
-                let (_, _, mut shader_module_bundle, mut pipeline_bundle) = self.render_bundles.swap_remove(index);
+                let (_, _, shader_module_bundle, pipeline_bundle) = self.render_bundles.swap_remove(index);
 
-                pipeline_bundle.destroy(factory);
-                shader_module_bundle.destroy(factory);
+                bundle_loader.queue_destroy_bundle(QueuedBundle::Pipeline(pipeline_bundle));
+                bundle_loader.queue_destroy_bundle(QueuedBundle::ShaderModule(shader_module_bundle));
             } else {
                 index += 1;
             }

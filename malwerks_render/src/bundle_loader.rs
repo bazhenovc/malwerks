@@ -20,6 +20,31 @@ use crate::imgui_renderer::*;
 pub type ResourceBundleReference = std::rc::Rc<std::cell::RefCell<ResourceBundle>>;
 pub type PbrResourceBundleReference = std::rc::Rc<std::cell::RefCell<PbrResourceBundle>>;
 
+pub enum QueuedBundle {
+    Resource(ResourceBundleReference),
+    ShaderModule(ShaderModuleBundle),
+    Pipeline(PipelineBundle),
+}
+
+impl QueuedBundle {
+    fn destroy(&mut self, factory: &mut DeviceFactory) {
+        match self {
+            QueuedBundle::Resource(resource_bundle) => {
+                let mut resource_bundle = resource_bundle.borrow_mut();
+                resource_bundle.destroy(factory);
+            }
+
+            QueuedBundle::ShaderModule(shader_module_bundle) => {
+                shader_module_bundle.destroy(factory);
+            }
+
+            QueuedBundle::Pipeline(pipeline_bundle) => {
+                pipeline_bundle.destroy(factory);
+            }
+        }
+    }
+}
+
 pub struct BundleLoaderParameters<'a> {
     pub bundle_compression_level: u32,
     pub temporary_folder: &'a std::path::Path,
@@ -35,7 +60,8 @@ pub struct BundleLoader {
     common_shaders: DiskCommonShaders,
     pbr_resource_bundle: PbrResourceBundleReference,
     resource_bundles: Vec<InternalBundleReference>,
-    resource_bundle_remove_queue: Vec<(isize, InternalBundleReference)>,
+
+    bundle_remove_queue: Vec<(isize, QueuedBundle)>,
 
     base_path: std::path::PathBuf,
     temporary_folder: std::path::PathBuf,
@@ -78,7 +104,7 @@ impl BundleLoader {
             queue,
         )));
         let resource_bundles = Vec::new();
-        let resource_bundle_remove_queue = Vec::new();
+        let bundle_remove_queue = Vec::new();
 
         let base_path = parameters.base_path.to_path_buf();
         let temporary_folder = parameters.temporary_folder.to_path_buf();
@@ -90,7 +116,7 @@ impl BundleLoader {
             common_shaders,
             pbr_resource_bundle,
             resource_bundles,
-            resource_bundle_remove_queue,
+            bundle_remove_queue,
             base_path,
             temporary_folder,
             compression_level,
@@ -107,9 +133,8 @@ impl BundleLoader {
             let mut resource_bundle = loaded_bundle.bundle.borrow_mut();
             resource_bundle.destroy(factory);
         }
-        for queued_bundle in &mut self.resource_bundle_remove_queue {
-            let mut resource_bundle = queued_bundle.1.bundle.borrow_mut();
-            resource_bundle.destroy(factory);
+        for queued_bundle in &mut self.bundle_remove_queue {
+            queued_bundle.1.destroy(factory);
         }
     }
 
@@ -168,27 +193,30 @@ impl BundleLoader {
         self.resource_bundles[bundle_index].bundle.clone()
     }
 
+    pub fn queue_destroy_bundle(&mut self, bundle: QueuedBundle) {
+        self.bundle_remove_queue.push((NUM_BUFFERED_GPU_FRAMES as _, bundle));
+    }
+
     pub fn begin_frame(&mut self, _frame_context: &FrameContext, factory: &mut DeviceFactory) {
         let mut index = 0;
         while index != self.resource_bundles.len() {
-            if std::rc::Rc::strong_count(&self.resource_bundles[index].bundle) == 1 {
+            let resource_bundle = &self.resource_bundles[index];
+            if std::rc::Rc::strong_count(&resource_bundle.bundle) == 1 {
+                log::info!("destroying resource bundle {:?}", &resource_bundle.bundle_file);
+
                 let resource_bundle = self.resource_bundles.swap_remove(index);
-                self.resource_bundle_remove_queue
-                    .push((NUM_BUFFERED_GPU_FRAMES as _, resource_bundle));
+                self.queue_destroy_bundle(QueuedBundle::Resource(resource_bundle.bundle));
             } else {
                 index += 1;
             }
         }
 
         let mut index = 0;
-        while index != self.resource_bundle_remove_queue.len() {
-            let mut queued_bundle = &mut self.resource_bundle_remove_queue[index];
+        while index != self.bundle_remove_queue.len() {
+            let mut queued_bundle = &mut self.bundle_remove_queue[index];
             if queued_bundle.0 == 0 {
-                log::info!("removing resource bundle {:?}", &queued_bundle.1.bundle_file);
-
-                let queued_bundle = self.resource_bundle_remove_queue.swap_remove(index);
-                let mut resource_bundle = queued_bundle.1.bundle.borrow_mut();
-                resource_bundle.destroy(factory);
+                let mut queued_bundle = self.bundle_remove_queue.swap_remove(index);
+                queued_bundle.1.destroy(factory);
             } else {
                 queued_bundle.0 -= 1;
                 index += 1;
