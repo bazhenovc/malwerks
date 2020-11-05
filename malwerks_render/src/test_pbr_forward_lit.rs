@@ -217,7 +217,7 @@ fn render_test_frame(
 ) {
     let frame_context = device.begin_frame();
     camera.update_matrices();
-    pbr_forward_lit.render(bundle_loader, camera, &frame_context, device, factory, queue);
+    pbr_forward_lit.render(camera, &frame_context, device, factory, queue);
 
     let command_buffer = bundle_loader.get_command_buffer_mut();
     let images = pbr_forward_lit.capture_render_targets(&frame_context, command_buffer, factory, queue);
@@ -429,7 +429,7 @@ fn test_render_passes() {
                 );
             }
 
-            pbr_forward_lit.destroy(&mut bundle_loader, &mut factory);
+            pbr_forward_lit.destroy(&mut factory);
             bundle_loader.destroy(&mut factory);
         }
     }

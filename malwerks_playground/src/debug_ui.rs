@@ -107,7 +107,7 @@ pub fn show_pbr_forward_lit_window<'a>(
                                 queue,
                             );
                         } else {
-                            pbr_forward_lit.remove_render_bundle($gltf_path, bundle_loader, device, factory, queue);
+                            pbr_forward_lit.remove_render_bundle($gltf_path, device, factory, queue);
                         }
                     }
                 }};
@@ -119,12 +119,12 @@ pub fn show_pbr_forward_lit_window<'a>(
 
             let bundles = pbr_forward_lit.get_render_bundles();
             ui.text(ImString::from(format!("Bundles: {}", bundles.len())));
-            for (bundle_name, bundle_id, shader_module_bundle, pipeline_bundle) in bundles {
-                if CollapsingHeader::new(&ImString::from(format!("Bundle {}: {}", bundle_id, bundle_name)))
+            for (bundle_name, bundle, shader_module_bundle, pipeline_bundle) in bundles {
+                if CollapsingHeader::new(&ImString::from(format!("Bundle {}", bundle_name)))
                     .default_open(true)
                     .build(ui)
                 {
-                    let resource_bundle = bundle_loader.resolve_resource_bundle(*bundle_id);
+                    let resource_bundle = bundle.borrow();
                     ui.text(ImString::from(format!("Buffers: {}", resource_bundle.buffers.len())));
                     ui.text(ImString::from(format!("Meshes: {}", resource_bundle.meshes.len())));
                     ui.text(ImString::from(format!("Images: {}", resource_bundle.images.len())));

@@ -21,7 +21,8 @@ pub struct PbrForwardLitParameters<'a> {
 
 pub struct PbrForwardLit {
     render_layer: RenderLayer,
-    render_bundles: Vec<(String, BundleId, ShaderModuleBundle, PipelineBundle)>,
+    render_bundles: Vec<(String, ResourceBundleReference, ShaderModuleBundle, PipelineBundle)>,
+    pbr_resource_bundle: PbrResourceBundleReference,
 
     sky_box: SkyBox,
     shared_frame_data: SharedFrameData,
@@ -30,12 +31,12 @@ pub struct PbrForwardLit {
 }
 
 impl PbrForwardLit {
-    pub fn destroy(&mut self, bundle_loader: &mut BundleLoader, factory: &mut DeviceFactory) {
-        for (_, bundle_id, shader_module_bundle, pipeline_bundle) in &mut self.render_bundles {
+    pub fn destroy(&mut self, factory: &mut DeviceFactory) {
+        for (_, _, shader_module_bundle, pipeline_bundle) in &mut self.render_bundles {
             pipeline_bundle.destroy(factory);
             shader_module_bundle.destroy(factory);
-            bundle_loader.release_bundle(*bundle_id, factory);
         }
+
         self.render_layer.destroy(factory);
         self.shared_frame_data.destroy(factory);
         self.sky_box.destroy(factory);
@@ -83,11 +84,12 @@ impl PbrForwardLit {
             },
         );
         let render_bundles = Vec::new();
+        let pbr_resource_bundle = parameters.bundle_loader.get_pbr_resource_bundle();
 
         let shared_frame_data = SharedFrameData::new(factory);
         let sky_box = SkyBox::from_disk(
             parameters.bundle_loader.get_common_shaders(),
-            parameters.bundle_loader.get_pbr_resource_bundle(),
+            &pbr_resource_bundle.borrow(),
             &shared_frame_data,
             &render_layer,
             factory,
@@ -108,6 +110,7 @@ impl PbrForwardLit {
         Self {
             render_layer,
             render_bundles,
+            pbr_resource_bundle,
 
             shared_frame_data,
             sky_box,
@@ -117,7 +120,6 @@ impl PbrForwardLit {
 
     pub fn render(
         &mut self,
-        bundle_loader: &BundleLoader,
         camera: &Camera,
         frame_context: &FrameContext,
         device: &mut Device,
@@ -157,8 +159,9 @@ impl PbrForwardLit {
             );
             command_buffer.set_scissor(0, &[screen_area]);
 
-            for (_, bundle_id, _, pipeline_bundle) in &self.render_bundles {
-                let resource_bundle = bundle_loader.resolve_resource_bundle(*bundle_id);
+            let pbr_resource_bundle = self.pbr_resource_bundle.borrow();
+            for (_, resource_bundle, _, pipeline_bundle) in &self.render_bundles {
+                let resource_bundle = resource_bundle.borrow();
 
                 let mut render_instance_id = 0;
                 for bucket in &resource_bundle.buckets {
@@ -190,7 +193,7 @@ impl PbrForwardLit {
                                 resource_bundle.descriptor_sets[instance.material_instance],
                                 pipeline_bundle.descriptor_sets[render_instance_id],
                                 *self.shared_frame_data.get_frame_data_descriptor_set(frame_context),
-                                bundle_loader.get_pbr_resource_bundle().descriptor_sets[0],
+                                pbr_resource_bundle.descriptor_sets[0],
                             ],
                             &[],
                         );
@@ -278,15 +281,15 @@ impl PbrForwardLit {
             .get_base_path()
             .join("malwerks_shaders/gltf_pbr_material.glsl");
 
-        let resource_bundle_id = bundle_loader.request_import_bundle(gltf_file, bundle_file, device, factory, queue);
+        let resource_bundle = bundle_loader.request_bundle(gltf_file, bundle_file, device, factory, queue);
         let shader_module_bundle = bundle_loader.compile_shader_module_bundle(
-            resource_bundle_id,
+            &resource_bundle,
             &bundle_file.with_extension("pbr_forward_lit"),
             &shader_path,
             factory,
         );
         let pipeline_bundle =
-            bundle_loader.create_pipeline_bundle(resource_bundle_id, |pbr_resource_bundle, resource_bundle| {
+            bundle_loader.create_pipeline_bundle(&resource_bundle, |pbr_resource_bundle, resource_bundle| {
                 PipelineBundle::new(
                     &PipelineBundleParameters {
                         resource_bundle,
@@ -303,17 +306,16 @@ impl PbrForwardLit {
 
         self.render_bundles.push((
             bundle_name.to_string(),
-            resource_bundle_id,
+            resource_bundle,
             shader_module_bundle,
             pipeline_bundle,
         ));
     }
 
-    // TODO: Implement queued destroy
+    // TODO: Implement queued remove
     pub fn remove_render_bundle(
         &mut self,
         bundle_name: &str,
-        bundle_loader: &mut BundleLoader,
         device: &Device,
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
@@ -325,19 +327,17 @@ impl PbrForwardLit {
         while index != self.render_bundles.len() {
             if self.render_bundles[index].0 == bundle_name {
                 log::info!("removing render bundle \"{}\"", bundle_name);
-                let (_, resource_bundle_id, mut shader_module_bundle, mut pipeline_bundle) =
-                    self.render_bundles.swap_remove(index);
-                    
+                let (_, _, mut shader_module_bundle, mut pipeline_bundle) = self.render_bundles.swap_remove(index);
+
                 pipeline_bundle.destroy(factory);
                 shader_module_bundle.destroy(factory);
-                bundle_loader.release_bundle(resource_bundle_id, factory);
             } else {
                 index += 1;
             }
         }
     }
 
-    pub fn get_render_bundles(&self) -> &[(String, BundleId, ShaderModuleBundle, PipelineBundle)] {
+    pub fn get_render_bundles(&self) -> &[(String, ResourceBundleReference, ShaderModuleBundle, PipelineBundle)] {
         &self.render_bundles
     }
 }

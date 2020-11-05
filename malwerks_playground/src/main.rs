@@ -75,7 +75,7 @@ impl Drop for Game {
 
         self.imgui_renderer.destroy(&mut self.factory);
 
-        self.pbr_forward_lit.destroy(&mut self.bundle_loader, &mut self.factory);
+        self.pbr_forward_lit.destroy(&mut self.factory);
         self.bundle_loader.destroy(&mut self.factory);
 
         self.surface_pass.destroy(&mut self.factory);
@@ -131,6 +131,7 @@ impl Game {
             &mut factory,
         );
         // pbr_forward_lit.add_render_bundle(
+        //     "Lantern",
         //     &mut bundle_loader,
         //     &command_line.assets_folder.join("lantern/Lantern.gltf"),
         //     &command_line.assets_folder.join("Lantern.resource_bundle"),
@@ -236,6 +237,11 @@ impl Game {
         (*puffin::GlobalProfiler::lock()).new_frame();
 
         let frame_context = self.device.begin_frame();
+        {
+            puffin::profile_scope!("begin_frame");
+            self.bundle_loader.begin_frame(&frame_context, &mut self.factory);
+        }
+
         let image_ready_semaphore = self.surface_pass.get_image_ready_semaphore(&frame_context);
         let surface_layer = self.surface_pass.get_render_layer_mut();
 
@@ -268,7 +274,6 @@ impl Game {
                 // render world
                 self.camera_state.update(time_delta);
                 self.pbr_forward_lit.render(
-                    &self.bundle_loader,
                     self.camera_state.get_camera(),
                     &frame_context,
                     &mut self.device,

@@ -17,7 +17,8 @@ use crate::pbr_resource_bundle::*;
 
 use crate::imgui_renderer::*;
 
-pub type BundleId = usize;
+pub type ResourceBundleReference = std::rc::Rc<std::cell::RefCell<ResourceBundle>>;
+pub type PbrResourceBundleReference = std::rc::Rc<std::cell::RefCell<PbrResourceBundle>>;
 
 pub struct BundleLoaderParameters<'a> {
     pub bundle_compression_level: u32,
@@ -32,8 +33,9 @@ pub struct BundleLoader {
     command_buffers: Vec<CommandBuffer>,
 
     common_shaders: DiskCommonShaders,
-    pbr_resource_bundle: PbrResourceBundle,
-    resource_bundles: Vec<LoadedBundle>,
+    pbr_resource_bundle: PbrResourceBundleReference,
+    resource_bundles: Vec<InternalBundleReference>,
+    resource_bundle_remove_queue: Vec<(isize, InternalBundleReference)>,
 
     base_path: std::path::PathBuf,
     temporary_folder: std::path::PathBuf,
@@ -66,7 +68,7 @@ impl BundleLoader {
             parameters.shader_bundle_path,
             parameters.bundle_compression_level,
         );
-        let pbr_resource_bundle = import_pbr_resource_bundle(
+        let pbr_resource_bundle = std::rc::Rc::new(std::cell::RefCell::new(import_pbr_resource_bundle(
             &parameters.temporary_folder.join("pbr_resource_bundle"),
             parameters.pbr_resource_folder,
             parameters.bundle_compression_level,
@@ -74,8 +76,9 @@ impl BundleLoader {
             device,
             factory,
             queue,
-        );
+        )));
         let resource_bundles = Vec::new();
+        let resource_bundle_remove_queue = Vec::new();
 
         let base_path = parameters.base_path.to_path_buf();
         let temporary_folder = parameters.temporary_folder.to_path_buf();
@@ -87,6 +90,7 @@ impl BundleLoader {
             common_shaders,
             pbr_resource_bundle,
             resource_bundles,
+            resource_bundle_remove_queue,
             base_path,
             temporary_folder,
             compression_level,
@@ -95,14 +99,17 @@ impl BundleLoader {
 
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_command_pool(self.command_pool);
-        self.pbr_resource_bundle.destroy(factory);
+
+        let mut pbr_resource_bundle = self.pbr_resource_bundle.borrow_mut();
+        pbr_resource_bundle.destroy(factory);
+
         for loaded_bundle in &mut self.resource_bundles {
-            assert_eq!(
-                loaded_bundle.use_count, 0,
-                "destroying bundle that is still in use: {:?}",
-                loaded_bundle.bundle_file
-            );
-            // resource_bundle.destroy(factory);
+            let mut resource_bundle = loaded_bundle.bundle.borrow_mut();
+            resource_bundle.destroy(factory);
+        }
+        for queued_bundle in &mut self.resource_bundle_remove_queue {
+            let mut resource_bundle = queued_bundle.1.bundle.borrow_mut();
+            resource_bundle.destroy(factory);
         }
     }
 
@@ -118,48 +125,33 @@ impl BundleLoader {
         &self.common_shaders
     }
 
-    pub fn get_pbr_resource_bundle(&self) -> &PbrResourceBundle {
-        &self.pbr_resource_bundle
+    pub fn get_pbr_resource_bundle(&self) -> PbrResourceBundleReference {
+        self.pbr_resource_bundle.clone()
     }
 }
 
 impl BundleLoader {
-    pub fn request_import_bundle(
+    pub fn request_bundle(
         &mut self,
         gltf_file: &std::path::Path,
         bundle_file: &std::path::Path,
         device: &Device,
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
-    ) -> BundleId {
+    ) -> ResourceBundleReference {
         log::info!("bundle import requested: {:?} -> {:?}", gltf_file, bundle_file);
-        if let Some(bundle_index) = self
+
+        let bundle_index = if let Some(bundle_index) = self
             .resource_bundles
             .iter()
             .position(|item| item.bundle_file == bundle_file)
         {
-            if self.resource_bundles[bundle_index].use_count == 0 {
-                self.resource_bundles[bundle_index].use_count = 1;
-                self.resource_bundles[bundle_index].bundle = import_bundle(
-                    &self.temporary_folder.join(bundle_file),
-                    gltf_file,
-                    bundle_file,
-                    self.compression_level,
-                    &mut self.command_buffers[0],
-                    device,
-                    factory,
-                    queue,
-                );
-            } else {
-                self.resource_bundles[bundle_index].use_count += 1;
-            }
-
             bundle_index
         } else {
             let bundle_index = self.resource_bundles.len();
-            self.resource_bundles.push(LoadedBundle {
+            self.resource_bundles.push(InternalBundleReference {
                 bundle_file: bundle_file.to_path_buf(),
-                bundle: import_bundle(
+                bundle: std::rc::Rc::new(std::cell::RefCell::new(import_bundle(
                     &self.temporary_folder.join(bundle_file),
                     gltf_file,
                     bundle_file,
@@ -168,44 +160,53 @@ impl BundleLoader {
                     device,
                     factory,
                     queue,
-                ),
-                use_count: 1,
+                ))),
             });
             bundle_index
-        }
+        };
+
+        self.resource_bundles[bundle_index].bundle.clone()
     }
 
-    pub fn release_bundle(&mut self, bundle_id: BundleId, factory: &mut DeviceFactory) {
-        let bundle = &mut self.resource_bundles[bundle_id];
-        assert_ne!(bundle.use_count, 0, "trying to destroy already destroyed bundle");
-
-        bundle.use_count -= 1;
-        if bundle.use_count == 0 {
-            bundle.bundle.destroy(factory);
+    pub fn begin_frame(&mut self, _frame_context: &FrameContext, factory: &mut DeviceFactory) {
+        let mut index = 0;
+        while index != self.resource_bundles.len() {
+            if std::rc::Rc::strong_count(&self.resource_bundles[index].bundle) == 1 {
+                let resource_bundle = self.resource_bundles.swap_remove(index);
+                self.resource_bundle_remove_queue
+                    .push((NUM_BUFFERED_GPU_FRAMES as _, resource_bundle));
+            } else {
+                index += 1;
+            }
         }
-    }
 
-    pub fn resolve_resource_bundle(&self, bundle_id: BundleId) -> &ResourceBundle {
-        &self.resource_bundles[bundle_id].bundle
+        let mut index = 0;
+        while index != self.resource_bundle_remove_queue.len() {
+            let mut queued_bundle = &mut self.resource_bundle_remove_queue[index];
+            if queued_bundle.0 == 0 {
+                log::info!("removing resource bundle {:?}", &queued_bundle.1.bundle_file);
+
+                let queued_bundle = self.resource_bundle_remove_queue.swap_remove(index);
+                let mut resource_bundle = queued_bundle.1.bundle.borrow_mut();
+                resource_bundle.destroy(factory);
+            } else {
+                queued_bundle.0 -= 1;
+                index += 1;
+            }
+        }
     }
 
     pub fn compile_shader_module_bundle(
         &self,
-        resource_bundle_id: BundleId,
+        resource_bundle: &ResourceBundleReference,
         bundle_file: &std::path::Path,
         shader_file: &std::path::Path,
         factory: &mut DeviceFactory,
     ) -> ShaderModuleBundle {
-        let resource_bundle = &self.resource_bundles[resource_bundle_id];
-        assert_ne!(
-            resource_bundle.use_count, 0,
-            "trying to compile shader modules for destroyed bundle {:?}",
-            resource_bundle.bundle_file
-        );
-
+        let resource_bundle = resource_bundle.borrow();
         let disk_shader_stage = if !bundle_file.exists() {
             let bundle = compile_material_shaders(
-                &resource_bundle.bundle,
+                &resource_bundle,
                 shader_file,
                 &self.temporary_folder.join(shader_file.file_name().unwrap()),
             );
@@ -230,17 +231,14 @@ impl BundleLoader {
         ShaderModuleBundle::new(&disk_shader_stage, factory)
     }
 
-    pub fn create_pipeline_bundle<F>(&self, resource_bundle_id: BundleId, mut func: F) -> PipelineBundle
+    pub fn create_pipeline_bundle<F>(&self, resource_bundle: &ResourceBundleReference, mut func: F) -> PipelineBundle
     where
         F: FnMut(&PbrResourceBundle, &ResourceBundle) -> PipelineBundle,
     {
-        let resource_bundle = &self.resource_bundles[resource_bundle_id];
-        assert_ne!(
-            resource_bundle.use_count, 0,
-            "trying to compile shader modules for destroyed bundle {:?}",
-            resource_bundle.bundle_file
-        );
-        func(&self.pbr_resource_bundle, &resource_bundle.bundle)
+        let pbr_resource_bundle = self.pbr_resource_bundle.borrow();
+        let resource_bundle = resource_bundle.borrow();
+
+        func(&pbr_resource_bundle, &resource_bundle)
     }
 }
 
@@ -265,10 +263,9 @@ impl BundleLoader {
     }
 }
 
-struct LoadedBundle {
+struct InternalBundleReference {
     bundle_file: std::path::PathBuf,
-    bundle: ResourceBundle,
-    use_count: isize,
+    bundle: ResourceBundleReference,
 }
 
 fn import_pbr_resource_bundle(
@@ -347,6 +344,9 @@ fn import_bundle(
 ) -> ResourceBundle {
     let disk_resource_bundle = if !bundle_file.exists() {
         let bundle = import_gltf_bundle(gltf_file, &temporary_path.join(gltf_file));
+        // if clusterize_meshes {
+        //     clusterize_bundle_in_place(&mut bundle);
+        // }
 
         let file = std::fs::OpenOptions::new()
             .create(true)
@@ -368,6 +368,20 @@ fn import_bundle(
 
     ResourceBundle::from_disk(&disk_resource_bundle, command_buffer, factory, queue)
 }
+
+// fn clusterize_bundle_in_place(bundle: &mut DiskResourceBundle) {
+//     for mesh in &mut bundle.meshes {
+//         let vertex_buffer = &bundle.buffers[mesh.vertex_buffer];
+//         let index_buffer = &bundle.buffers[mesh.index_buffer.1];
+//
+//         let (new_vertex_buffer, new_index_buffer, mesh_clusters, bounding_cones) =
+//             build_mesh_clusters(&vertex_buffer, &index_buffer);
+//
+//         mesh.index_buffer.0 = new_index_buffer.0;
+//         bundle.buffers[mesh.vertex_buffer] = new_vertex_buffer;
+//         bundle.buffers[mesh.index_buffer.1] = new_index_buffer.1;
+//     }
+// }
 
 fn import_common_shaders(
     base_path: &std::path::Path,
