@@ -8,14 +8,15 @@ license = "MPL-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-malwerks_resources = { path = "../malwerks_resources" }
+malwerks_bundles = { path = "../malwerks_bundles" }
 malwerks_external = { path = "../malwerks_external" }
 
-shaderc = "*"
 log = "*"
 ash = "*"
 ultraviolet = "*"
 bytemuck = "*"
+
+shaderc = "*"
 
 [dependencies.gltf]
 version = "*"

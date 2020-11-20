@@ -5,9 +5,10 @@
 
 #version 460 core
 
-#include "generated://shader_prelude.glsl"
+#include "generated://attribute_fetch.glsl"
+#include "generated://image_mapping.glsl"
 
-layout (std140, set = 0, binding = 0) uniform PerFrame {
+layout (std140, set = 2, binding = 0) uniform PerFrame {
     mat4 view_projection;
     mat4 inverse_view_projection;
     vec4 camera_position;
@@ -20,7 +21,7 @@ layout (push_constant) uniform PC_ViewProjection {
 };
 
 void main() {
-    vec4 position = generated_vertex_shader();
+    vec4 position = fetch_vertex_attributes();
     gl_Position = ViewProjection * position;
 }
 #endif
@@ -33,9 +34,10 @@ layout (push_constant) uniform PC_MaterialInstance {
     layout (offset = 112) vec4 unused;
 };
 
-layout (set = 3, binding = 0) uniform samplerCube IemTexture;
-layout (set = 3, binding = 1) uniform samplerCube PmremTexture;
-layout (set = 3, binding = 2) uniform sampler2D PrecomputedBrdf;
+layout (set = 3, binding = 0) uniform sampler2D PrecomputedBrdf;
+layout (set = 3, binding = 1) uniform samplerCube ProbeTexture;
+layout (set = 3, binding = 2) uniform samplerCube IemTexture;
+layout (set = 3, binding = 3) uniform samplerCube PmremTexture;
 
 vec4 sample_base_color() {
     #ifdef HAS_BaseColorTexture

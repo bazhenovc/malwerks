@@ -3,13 +3,12 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_resources::*;
+use malwerks_core::*;
 use malwerks_vk::*;
 
-use crate::forward_pass::*;
-use crate::render_layer::*;
+use crate::common_shaders::*;
 
-pub struct PostProcess {
+pub struct ToneMap {
     point_sampler: vk::Sampler,
     linear_sampler: vk::Sampler,
 
@@ -24,21 +23,22 @@ pub struct PostProcess {
     pipeline: vk::Pipeline,
 }
 
-impl PostProcess {
+impl ToneMap {
     pub fn new(
-        global_resources: &DiskGlobalResources,
-        source_pass: &ForwardPass, // TODO: make it a generic render pass
-        destination_pass: &RenderLayer,
+        common_shaders: &DiskCommonShaders,
+        source_layer: &RenderLayer,
+        source_image: usize,
+        target_layer: &RenderLayer,
         factory: &mut DeviceFactory,
     ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&global_resources.postprocess_vertex_stage)
+                .code(&common_shaders.tone_map_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&global_resources.postprocess_fragment_stage)
+                .code(&common_shaders.tone_map_fragment_stage)
                 .build(),
         );
 
@@ -129,7 +129,7 @@ impl PostProcess {
                     .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
-                        .image_view(source_pass.get_color_image_view())
+                        .image_view(source_layer.get_render_image(source_image).1)
                         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .build()])
                     .build(),
@@ -199,7 +199,7 @@ impl PostProcess {
                         .build(),
                 )
                 .layout(pipeline_layout)
-                .render_pass(destination_pass.get_render_pass())
+                .render_pass(target_layer.get_render_pass())
                 .subpass(0)
                 .base_pipeline_handle(vk::Pipeline::null())
                 .base_pipeline_index(0)
@@ -230,8 +230,8 @@ impl PostProcess {
         factory.destroy_pipeline(self.pipeline);
     }
 
-    pub fn render(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, destination_pass: &mut RenderLayer) {
-        let command_buffer = destination_pass.get_command_buffer(frame_context);
+    pub fn render(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, target_layer: &mut RenderLayer) {
+        let command_buffer = target_layer.get_command_buffer(frame_context);
 
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline);
         command_buffer.bind_descriptor_sets(

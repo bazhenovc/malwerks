@@ -6,7 +6,12 @@
 use malwerks_dds::*;
 use malwerks_vk::*;
 
-use crate::forward_pass::*;
+use crate::bundle_loader::*;
+use crate::camera::*;
+use crate::pbr_forward_lit::*;
+
+const RENDER_WIDTH: u32 = 1024;
+const RENDER_HEIGHT: u32 = 1024;
 
 trait CaptureRenderTargets {
     fn capture_render_targets(
@@ -18,7 +23,7 @@ trait CaptureRenderTargets {
     ) -> Vec<(&'static str, ScratchImage)>;
 }
 
-impl CaptureRenderTargets for ForwardPass {
+impl CaptureRenderTargets for PbrForwardLit {
     fn capture_render_targets(
         &self,
         frame_context: &FrameContext,
@@ -33,7 +38,11 @@ impl CaptureRenderTargets for ForwardPass {
             signal_semaphore,
             stage_mask,
             self.get_render_layer().get_image_resource(0),
-            self.get_extent(),
+            vk::Extent3D {
+                width: RENDER_WIDTH,
+                height: RENDER_HEIGHT,
+                depth: 1,
+            },
             vk::ImageAspectFlags::COLOR,
             DXGI_FORMAT_R11G11B10_FLOAT,
             1,
@@ -194,26 +203,24 @@ fn capture_render_target(
     scratch_image
 }
 
-use crate::camera::*;
-use crate::render_world::*;
-
 fn render_test_frame(
-    world_test_path: &std::path::Path,
+    test_path: &std::path::Path,
     test_name: &str,
-    command_buffer: &mut CommandBuffer,
+
+    bundle_loader: &mut BundleLoader,
+    pbr_forward_lit: &mut PbrForwardLit,
     camera: &mut Camera,
-    render_world: &mut RenderWorld,
+
     device: &mut Device,
     factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
 ) {
     let frame_context = device.begin_frame();
     camera.update_matrices();
-    render_world.render(camera, &frame_context, device, factory, queue);
-    let images =
-        render_world
-            .get_forward_render_pass()
-            .capture_render_targets(&frame_context, command_buffer, factory, queue);
+    pbr_forward_lit.render(camera, &frame_context, device, factory, queue);
+
+    let command_buffer = bundle_loader.get_command_buffer_mut();
+    let images = pbr_forward_lit.capture_render_targets(&frame_context, command_buffer, factory, queue);
 
     device.end_frame(frame_context);
 
@@ -224,7 +231,7 @@ fn render_test_frame(
         log::info!("testing {}/{}", test_name, image_name);
         let image_name = String::from(test_name) + "_" + image_name;
 
-        let dds_path = world_test_path.join(&image_name).with_extension("dds");
+        let dds_path = test_path.join(&image_name).with_extension("dds");
         scratch_image.save_to_file(&dds_path);
 
         let texconv_args = vec![
@@ -236,10 +243,10 @@ fn render_test_frame(
             "-f",
             "R32G32B32A32_FLOAT",
             "-o",
-            world_test_path.to_str().unwrap(),
+            test_path.to_str().unwrap(),
             dds_path.to_str().unwrap(),
         ];
-        // log::info!("texconv.exe {:?}", &texconv_args);
+        log::info!("texconv.exe {:?}", &texconv_args);
         let texconv = std::process::Command::new("texconv.exe")
             .args(&texconv_args)
             .current_dir(std::env::current_dir().expect("failed to get current process dir"))
@@ -249,10 +256,7 @@ fn render_test_frame(
             panic!("texconv finished with status {:?}", texconv.status);
         }
 
-        let reference_path = world_test_path
-            .join("reference")
-            .join(&image_name)
-            .with_extension("dds");
+        let reference_path = test_path.join("reference").join(&image_name).with_extension("dds");
         let reference_image = ScratchImage::from_file(&reference_path);
         let test_image = ScratchImage::from_file(&dds_path);
 
@@ -292,7 +296,7 @@ fn render_test_frame(
         }
 
         let difference_name = image_name + "_difference";
-        let difference_path = world_test_path.join(difference_name).with_extension("dds");
+        let difference_path = test_path.join(difference_name).with_extension("dds");
         difference_image.save_to_file(&difference_path);
 
         log::info!("absolute difference: {}", absolute_difference);
@@ -302,17 +306,15 @@ fn render_test_frame(
 
 #[test]
 fn test_render_passes() {
-    use malwerks_vk::*;
+    let base_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
+        std::env::set_var("RUST_LOG", "info");
+        std::path::PathBuf::from(manifest_path).join("..")
+    } else {
+        std::path::PathBuf::from(".")
+    };
 
     pretty_env_logger::init();
-
-    let resource_path = if let Ok(manifest_path) = std::env::var("CARGO_MANIFEST_DIR") {
-        std::env::set_var("RUST_LOG", "info");
-        std::path::PathBuf::from(manifest_path).join("..").join("assets")
-    } else {
-        std::path::PathBuf::from("assets/")
-    };
-    log::info!("resource path set to {:?}", &resource_path);
+    log::info!("base path set to {:?}", &base_path);
 
     let mut device = Device::new(
         SurfaceMode::Headless(|_: &ash::Entry, _: &ash::Instance| vk::SurfaceKHR::null()),
@@ -326,51 +328,40 @@ fn test_render_passes() {
     let mut factory = device.create_factory();
 
     {
-        struct TemporaryCommandBuffer {
-            command_pool: vk::CommandPool,
-            command_buffer: CommandBuffer,
-        }
-
-        impl TemporaryCommandBuffer {
-            fn destroy(&mut self, factory: &mut DeviceFactory) {
-                factory.destroy_command_pool(self.command_pool);
-            }
-        }
-
-        let temporary_command_pool = factory.create_command_pool(
-            &vk::CommandPoolCreateInfo::builder()
-                .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(device.get_graphics_queue_index())
-                .build(),
+        let mut bundle_loader = BundleLoader::new(
+            &BundleLoaderParameters {
+                bundle_compression_level: 9,
+                temporary_folder: &base_path.join("assets").join("temporary_folder"),
+                base_path: &base_path,
+                shader_bundle_path: &base_path.join("assets").join("common_shaders.bundle"),
+                pbr_resource_folder: &base_path.join("assets").join("pbr_resources"),
+            },
+            &device,
+            &mut factory,
+            &mut queue,
         );
-        let mut temporary_command_buffer = TemporaryCommandBuffer {
-            command_pool: temporary_command_pool,
-            command_buffer: factory.allocate_command_buffers(
-                &vk::CommandBufferAllocateInfo::builder()
-                    .command_buffer_count(1)
-                    .command_pool(temporary_command_pool)
-                    .level(vk::CommandBufferLevel::PRIMARY)
-                    .build(),
-            )[0],
-        };
 
-        const RENDER_WIDTH: u32 = 1024;
-        const RENDER_HEIGHT: u32 = 1024;
+        let mut pbr_forward_lit = PbrForwardLit::new(
+            &PbrForwardLitParameters {
+                render_width: RENDER_WIDTH,
+                render_height: RENDER_HEIGHT,
+                target_layer: None,
+                bundle_loader: &bundle_loader,
+            },
+            &device,
+            &mut factory,
+        );
+        pbr_forward_lit.add_render_bundle(
+            "lantern_test",
+            &mut bundle_loader,
+            &base_path.join("assets").join("lantern/Lantern.gltf"),
+            &base_path.join("assets").join("Lantern.resource_bundle"),
+            &device,
+            &mut factory,
+            &mut queue,
+        );
 
         {
-            let world_folder = resource_path.join("lantern");
-            let world_test_path = world_folder.join("tests");
-            let world_path = world_folder.join("Lantern.world");
-
-            let mut render_world = RenderWorld::from_file(
-                &world_path,
-                (RENDER_WIDTH, RENDER_HEIGHT),
-                &mut temporary_command_buffer.command_buffer,
-                &device,
-                &mut factory,
-                &mut queue,
-            );
-
             let mut camera = Camera::new(
                 45.0,
                 Viewport {
@@ -386,6 +377,7 @@ fn test_render_passes() {
             use ultraviolet::rotor::Rotor3;
             use ultraviolet::vec::Vec3;
 
+            let test_path = base_path.join("assets").join("lantern").join("tests");
             let test_cameras = [
                 ("00", Vec3::new(0.0, -12.0, -35.0), Rotor3::identity()),
                 ("01", Vec3::new(0.0, -2.5, -7.5), Rotor3::identity()),
@@ -426,19 +418,19 @@ fn test_render_passes() {
                 camera.position = *position;
                 camera.orientation = *orientation;
                 render_test_frame(
-                    &world_test_path,
+                    &test_path,
                     name,
-                    &mut temporary_command_buffer.command_buffer,
+                    &mut bundle_loader,
+                    &mut pbr_forward_lit,
                     &mut camera,
-                    &mut render_world,
                     &mut device,
                     &mut factory,
                     &mut queue,
                 );
             }
 
-            temporary_command_buffer.destroy(&mut factory);
-            render_world.destroy(&mut factory);
+            pbr_forward_lit.destroy(&mut factory);
+            bundle_loader.destroy(&mut factory);
         }
     }
 

@@ -4,6 +4,7 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use malwerks_render::*;
+use malwerks_vk::*;
 
 use crate::camera_state::*;
 
@@ -12,7 +13,6 @@ pub fn show_debug_window<'a>(
     _window: &winit::window::Window,
     gilrs: &gilrs::Gilrs,
     camera_state: &mut CameraState,
-    render_world: &mut RenderWorld,
     average_frame_time: f32,
     average_fps: f32,
 ) {
@@ -73,34 +73,93 @@ pub fn show_debug_window<'a>(
                     }
                 }
             }
+        });
+}
 
-            // cluster culling
-            if CollapsingHeader::new(im_str!("Mesh cluster culling"))
-                .default_open(true)
-                .build(ui)
-            {
-                static mut APEX_CULLING_ENABLED: bool = true;
-                if ui.checkbox(im_str!("Apex culling enabled"), unsafe { &mut APEX_CULLING_ENABLED }) {
-                    render_world.debug_set_apex_culling_enabled(unsafe { APEX_CULLING_ENABLED });
-                }
+pub fn show_pbr_forward_lit_window<'a>(
+    ui: &imgui::Ui<'a>,
+    assets_folder: &std::path::Path,
 
-                static mut APEX_CULLING_PAUSED: bool = false;
-                if ui.checkbox(im_str!("Apex culling paused"), unsafe { &mut APEX_CULLING_PAUSED }) {
-                    render_world.debug_set_apex_culling_paused(unsafe { APEX_CULLING_PAUSED });
-                }
+    bundle_loader: &mut BundleLoader,
+    pbr_forward_lit: &mut PbrForwardLit,
 
-                static mut OCCLUSION_CULLING_ENABLED: bool = true;
-                if ui.checkbox(im_str!("Occlusion culling enabled"), unsafe {
-                    &mut OCCLUSION_CULLING_ENABLED
-                }) {
-                    render_world.debug_set_occlusion_culling_enabled(unsafe { OCCLUSION_CULLING_ENABLED });
-                }
+    device: &Device,
+    factory: &mut DeviceFactory,
+    queue: &mut DeviceQueue,
+) {
+    use imgui::*;
 
-                static mut OCCLUSION_CULLING_PAUSED: bool = false;
-                if ui.checkbox(im_str!("Occlusion culling paused"), unsafe {
-                    &mut OCCLUSION_CULLING_PAUSED
-                }) {
-                    render_world.debug_set_occlusion_culling_paused(unsafe { OCCLUSION_CULLING_PAUSED });
+    Window::new(im_str!("PbrForwardLit"))
+        .always_auto_resize(true)
+        .build(ui, || {
+            macro_rules! bundle_checkbox {
+                ($gltf_path: expr, $bundle_path: expr) => {{
+                    static mut BUNDLE_FLAG: bool = false;
+                    if ui.checkbox(im_str!($gltf_path), unsafe { &mut BUNDLE_FLAG }) {
+                        if unsafe { BUNDLE_FLAG } {
+                            pbr_forward_lit.add_render_bundle(
+                                $gltf_path,
+                                bundle_loader,
+                                &assets_folder.join($gltf_path),
+                                &assets_folder.join($bundle_path),
+                                device,
+                                factory,
+                                queue,
+                            );
+                        } else {
+                            pbr_forward_lit.remove_render_bundle($gltf_path, bundle_loader);
+                        }
+                    }
+                }};
+            }
+
+            bundle_checkbox!("lantern/Lantern.gltf", "Lantern.resource_bundle");
+            bundle_checkbox!("sponza/Sponza.gltf", "Sponza.resource_bundle");
+            bundle_checkbox!("house_test/housetest2.gltf", "housetest2.resource_bundle");
+
+            let bundles = pbr_forward_lit.get_render_bundles();
+            ui.text(ImString::from(format!("Bundles: {}", bundles.len())));
+            for (bundle_name, bundle, shader_module_bundle, pipeline_bundle) in bundles {
+                if CollapsingHeader::new(&ImString::from(format!("Bundle {}", bundle_name)))
+                    .default_open(true)
+                    .build(ui)
+                {
+                    let resource_bundle = bundle.borrow();
+                    ui.text(ImString::from(format!("Buffers: {}", resource_bundle.buffers.len())));
+                    ui.text(ImString::from(format!("Meshes: {}", resource_bundle.meshes.len())));
+                    ui.text(ImString::from(format!("Images: {}", resource_bundle.images.len())));
+                    ui.text(ImString::from(format!(
+                        "Image views: {}",
+                        resource_bundle.image_views.len()
+                    )));
+                    ui.text(ImString::from(format!("Samplers: {}", resource_bundle.samplers.len())));
+                    ui.text(ImString::from(format!("Buckets: {}", resource_bundle.buffers.len())));
+                    ui.text(ImString::from(format!(
+                        "Descriptor layouts: {}",
+                        resource_bundle.descriptor_layouts.len()
+                    )));
+                    ui.text(ImString::from(format!(
+                        "Descriptor sets: {}",
+                        resource_bundle.descriptor_sets.len()
+                    )));
+                    ui.text(ImString::from(format!(
+                        "Materials: {}",
+                        resource_bundle.materials.len()
+                    )));
+
+                    ui.text(ImString::from(format!(
+                        "Shader stages: {}",
+                        shader_module_bundle.shader_stages.len()
+                    )));
+
+                    ui.text(ImString::from(format!(
+                        "Pipeline layouts: {}",
+                        pipeline_bundle.pipeline_layouts.len()
+                    )));
+                    ui.text(ImString::from(format!(
+                        "Pipelines: {}",
+                        pipeline_bundle.pipelines.len()
+                    )));
                 }
             }
         });

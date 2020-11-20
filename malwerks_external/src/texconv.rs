@@ -4,8 +4,8 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use ash::vk;
+use malwerks_bundles::*;
 use malwerks_dds::*;
-use malwerks_resources::*;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ImageUsage {
@@ -20,9 +20,17 @@ pub enum ImageUsage {
     EnvironmentBrdf,
 }
 
-pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, image_path: &std::path::Path) -> DiskImage {
-    let dds_path = base_path.join(image_path.with_extension("dds").file_name().unwrap());
+pub fn compress_image(
+    image_usage: ImageUsage,
+    output_path: &std::path::Path,
+    image_path: &std::path::Path,
+) -> DiskImage {
+    std::fs::create_dir_all(output_path).expect("failed to create output folder for texconv");
+
+    let dds_path = output_path.join(image_path.with_extension("dds").file_name().unwrap());
     assert_ne!(dds_path, image_path); // make sure we're not writing compressed output to the source texture
+
+    log::info!("texconv {:?} {:?} -> {:?}", image_usage, image_path, dds_path);
 
     const FORCE_TEXCONV: bool = false;
     let need_texconv = FORCE_TEXCONV || {
@@ -39,7 +47,7 @@ pub fn compress_image(image_usage: ImageUsage, base_path: &std::path::Path, imag
         }
     };
 
-    let mut texconv_args = vec!["-nologo", "-dx10", "-y", "-o", base_path.to_str().unwrap()];
+    let mut texconv_args = vec!["-nologo", "-dx10", "-y", "-o", output_path.to_str().unwrap()];
     let (image_format, expected_block_size, is_cube_map) = match image_usage {
         ImageUsage::SrgbColor => {
             texconv_args.push("-srgb");

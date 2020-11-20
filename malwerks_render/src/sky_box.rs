@@ -3,14 +3,12 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_resources::*;
+use malwerks_core::*;
 use malwerks_vk::*;
 
-use crate::forward_pass::*;
+use crate::common_shaders::*;
+use crate::pbr_resource_bundle::*;
 use crate::shared_frame_data::*;
-
-// TODO: refactor this
-use crate::static_scenery::*;
 
 pub struct SkyBox {
     linear_sampler: vk::Sampler,
@@ -28,29 +26,29 @@ pub struct SkyBox {
 
 impl SkyBox {
     pub fn from_disk(
-        disk_scenery: &DiskStaticScenery,
-        static_scenery: &StaticScenery,
+        common_shaders: &DiskCommonShaders,
+        pbr_resource_bundle: &PbrResourceBundle,
         shared_frame_data: &SharedFrameData,
-        forward_pass: &ForwardPass,
+        target_layer: &RenderLayer,
         factory: &mut DeviceFactory,
     ) -> Self {
         let vert_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&disk_scenery.global_resources.skybox_vertex_stage)
+                .code(&common_shaders.skybox_vertex_stage)
                 .build(),
         );
         let frag_module = factory.create_shader_module(
             &vk::ShaderModuleCreateInfo::builder()
-                .code(&disk_scenery.global_resources.skybox_fragment_stage)
+                .code(&common_shaders.skybox_fragment_stage)
                 .build(),
         );
 
         let entry_name = std::ffi::CString::new("main").expect("failed to allocate entry name");
-        let post_process_vert = vk::PipelineShaderStageCreateInfo::builder()
+        let vertex_stage = vk::PipelineShaderStageCreateInfo::builder()
             .name(&entry_name)
             .module(vert_module)
             .stage(vk::ShaderStageFlags::VERTEX);
-        let post_process_frag = vk::PipelineShaderStageCreateInfo::builder()
+        let fragment_stage = vk::PipelineShaderStageCreateInfo::builder()
             .name(&entry_name)
             .module(frag_module)
             .stage(vk::ShaderStageFlags::FRAGMENT);
@@ -66,7 +64,6 @@ impl SkyBox {
                 .build(),
         );
 
-        let disk_probe = &disk_scenery.environment_probes[0];
         let descriptor_pool = factory.create_descriptor_pool(
             &vk::DescriptorPoolCreateInfo::builder().max_sets(1).pool_sizes(&[
                 vk::DescriptorPoolSize::builder()
@@ -115,7 +112,7 @@ impl SkyBox {
                     .dst_binding(1)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
-                        .image_view(static_scenery.get_image_view(disk_probe.skybox_image))
+                        .image_view(pbr_resource_bundle.get_probe_image_view())
                         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                         .build()])
                     .build(),
@@ -125,16 +122,13 @@ impl SkyBox {
 
         let pipeline_layout = factory.create_pipeline_layout(
             &vk::PipelineLayoutCreateInfo::builder()
-                .set_layouts(&[
-                    shared_frame_data.get_frame_data_descriptor_set_layout(),
-                    descriptor_set_layout,
-                ])
+                .set_layouts(&[shared_frame_data.descriptor_set_layout, descriptor_set_layout])
                 .build(),
         );
         let pipeline = factory.create_graphics_pipelines(
             vk::PipelineCache::null(),
             &[vk::GraphicsPipelineCreateInfo::builder()
-                .stages(&[post_process_vert.build(), post_process_frag.build()])
+                .stages(&[vertex_stage.build(), fragment_stage.build()])
                 .vertex_input_state(
                     &vk::PipelineVertexInputStateCreateInfo::builder()
                         .vertex_binding_descriptions(&[])
@@ -191,7 +185,7 @@ impl SkyBox {
                         .build(),
                 )
                 .layout(pipeline_layout)
-                .render_pass(forward_pass.get_render_pass())
+                .render_pass(target_layer.get_render_pass())
                 .subpass(0)
                 .base_pipeline_handle(vk::Pipeline::null())
                 .base_pipeline_index(0)

@@ -3,7 +3,8 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use malwerks_render::*;
+use malwerks_core::*;
+use malwerks_vk::*;
 
 use crate::surface_winit::*;
 
@@ -116,13 +117,13 @@ impl SurfacePass {
         self.render_layer.destroy(factory);
     }
 
-    pub fn try_get_oldest_timestamp(
-        &self,
-        frame_context: &FrameContext,
-        factory: &mut DeviceFactory,
-    ) -> Option<[u64; 2]> {
-        self.render_layer.try_get_oldest_timestamp(frame_context, factory)
-    }
+    // pub fn try_get_oldest_timestamp(
+    //     &self,
+    //     frame_context: &FrameContext,
+    //     factory: &mut DeviceFactory,
+    // ) -> Option<[u64; 2]> {
+    //     self.render_layer.try_get_oldest_timestamp(frame_context, factory)
+    // }
 
     pub fn get_image_ready_semaphore(&self, frame_context: &FrameContext) -> vk::Semaphore {
         *self.image_ready_semaphore.get(frame_context)

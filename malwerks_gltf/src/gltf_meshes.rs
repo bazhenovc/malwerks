@@ -3,26 +3,30 @@
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use malwerks_bundles::*;
 use malwerks_external::*;
-use malwerks_resources::*;
 
 use ash::vk;
-use ultraviolet as utv;
 
 use crate::gltf_materials::*;
 use crate::gltf_shared::*;
 
 pub fn import_meshes(
-    static_scenery: &mut DiskStaticScenery,
     base_path: &std::path::Path,
     buffers: gltf::iter::Buffers,
     _views: gltf::iter::Views,
     meshes: gltf::iter::Meshes,
     materials: gltf::iter::Materials,
-) -> Vec<PrimitiveRemap> {
-    static_scenery.buffers.reserve_exact(meshes.len() * 2);
-    static_scenery.meshes.reserve_exact(meshes.len());
-    static_scenery.materials.reserve_exact(meshes.len());
+    material_layouts: &[DiskMaterialLayout],
+) -> (
+    Vec<DiskBuffer>,
+    Vec<DiskRenderMesh>,
+    Vec<DiskMaterial>,
+    Vec<PrimitiveRemap>,
+) {
+    let mut out_buffers = Vec::with_capacity(meshes.len() * 2);
+    let mut out_meshes = Vec::with_capacity(meshes.len());
+    let mut out_materials = Vec::with_capacity(meshes.len()); // Allocate for the worst case
 
     let mut primitive_remap_table = Vec::with_capacity(meshes.len());
 
@@ -48,7 +52,7 @@ pub fn import_meshes(
         }
     }
 
-    let mut temp_preludes = Vec::with_capacity(meshes.len());
+    let mut attribute_cache = Vec::with_capacity(meshes.len());
     for mesh in meshes {
         log::info!(
             "loading and optimizing mesh {:?} with {:?} primitives",
@@ -107,7 +111,7 @@ pub fn import_meshes(
                         gltf::mesh::Semantic::Tangents => String::from("tangent"),
                         gltf::mesh::Semantic::TexCoords(idx) => format!("uv{}", idx),
 
-                        _ => panic!("attribute semantic is not supported"),
+                        _ => unimplemented!("unsupported attribute semantic"),
                     },
                     location,
                     format,
@@ -130,18 +134,16 @@ pub fn import_meshes(
                 vertex_stride += attribute.stride;
             }
 
-            let real_mesh_id = static_scenery.meshes.len();
+            let real_mesh_id = out_meshes.len();
             let real_material_id = generate_material(
-                static_scenery,
-                base_path,
                 material_id,
                 vertex_stride,
-                &mut temp_preludes,
                 &attributes,
                 materials.clone(),
+                material_layouts,
+                &mut attribute_cache,
+                &mut out_materials,
             );
-
-            // let mut bounding_box = BoundingBox::new_empty();
 
             let mut vertex_data = Vec::new();
             vertex_data.resize(vertex_count * vertex_stride, 0u8);
@@ -156,95 +158,70 @@ pub fn import_meshes(
                     dst_slice.copy_from_slice(src_slice);
 
                     vertex_offset += attribute.stride;
-
-                    // if attribute.semantic == gltf::mesh::Semantic::Positions {
-                    //     let f32_slice = unsafe {
-                    //         assert!(src_slice.len() <= std::mem::size_of::<[f32; 3]>());
-                    //         #[allow(clippy::cast_ptr_alignment)]
-                    //         std::ptr::read_unaligned(src_slice.as_ptr() as *const [f32; 3])
-                    //     };
-                    //     bounding_box.insert_point(utv::vec::Vec3::new(f32_slice[0], f32_slice[1], f32_slice[2]));
-                    // }
                 }
             }
 
             // TODO: Detect and merge identical buffers
-            let (vertex_buffer, draw_index_buffer, occluder_index_buffer, mesh_clusters, bounding_cones) =
-                if let Some(indices) = primitive.indices() {
-                    let index_count = indices.count();
-                    let index_stride = match indices.data_type() {
-                        gltf::accessor::DataType::U16 => 2,
-                        gltf::accessor::DataType::U32 => 4,
-                        _ => panic!("unsupported index format"),
-                    };
-
-                    let mut index_data = Vec::new();
-                    index_data.resize(index_count * index_stride, 0u8);
-
-                    let index_view = indices.view().expect("index buffer view undefined");
-                    let indices_start = index_view.offset();
-                    let indices_end = indices_start + index_view.length();
-
-                    let src_slice = &temp_buffers[index_view.buffer().index()][indices_start..indices_end];
-                    index_data.copy_from_slice(src_slice);
-
-                    optimize_mesh(
-                        &vertex_data,
-                        vertex_stride,
-                        vertex_count,
-                        &index_data,
-                        index_stride,
-                        index_count,
-                    )
-                } else {
-                    // TODO: Need to generate an index buffer that just directly follows the vertex buffer
-                    unimplemented!();
+            let (vertex_buffer, index_buffer, index_format) = if let Some(indices) = primitive.indices() {
+                let index_count = indices.count();
+                let (index_stride, index_format) = match indices.data_type() {
+                    gltf::accessor::DataType::U16 => (2, vk::IndexType::UINT16),
+                    gltf::accessor::DataType::U32 => (4, vk::IndexType::UINT32),
+                    _ => panic!("unsupported index format"),
                 };
 
+                let mut index_data = Vec::new();
+                index_data.resize(index_count * index_stride, 0u8);
+
+                let index_view = indices.view().expect("index buffer view undefined");
+                let indices_start = index_view.offset();
+                let indices_end = indices_start + index_view.length();
+
+                let src_slice = &temp_buffers[index_view.buffer().index()][indices_start..indices_end];
+                index_data.copy_from_slice(src_slice);
+
+                let (vertex_buffer, index_buffer) = optimize_mesh(
+                    &vertex_data,
+                    vertex_stride,
+                    vertex_count,
+                    &index_data,
+                    index_stride,
+                    index_count,
+                );
+
+                (vertex_buffer, index_buffer, index_format)
+            } else {
+                todo!("Need to generate an index buffer that just directly follows the vertex buffer");
+            };
+
+            let index_count = index_buffer.data.len() / (index_buffer.stride as usize);
             log::info!(
-                "Stats for {:?}: vertices: {} -> {}, indices: {}, occluder indices: {}, cluster count: {}",
+                "mesh {:?} optimized: vertices: {} -> {}, indices: {}",
                 mesh.name().unwrap_or_default(),
                 vertex_count,
                 vertex_buffer.data.len() / (vertex_buffer.stride as usize),
-                draw_index_buffer.data.len() / (draw_index_buffer.stride as usize),
-                occluder_index_buffer.data.len() / (occluder_index_buffer.stride as usize),
-                mesh_clusters.len(),
+                index_count,
             );
 
-            let vertex_buffer_id = static_scenery.buffers.len();
-            static_scenery.buffers.push(vertex_buffer);
-            static_scenery.buffers.push(draw_index_buffer);
-            static_scenery.buffers.push(occluder_index_buffer);
+            let vertex_buffer_id = out_buffers.len();
+            out_buffers.push(vertex_buffer);
+            out_buffers.push(index_buffer);
 
-            let disk_mesh = DiskStaticMesh {
+            let disk_mesh = DiskRenderMesh {
                 vertex_buffer: vertex_buffer_id,
-                draw_index_buffer: vertex_buffer_id + 1,
-                occluder_index_buffer: vertex_buffer_id + 2,
-                mesh_clusters,
-                bounding_cones,
+                index_buffer: (index_format.as_raw(), vertex_buffer_id + 1),
+                index_count,
             };
-            per_primitive_remap.push((
-                real_mesh_id,
-                real_material_id,
-                material_id,
-                disk_mesh
-                    .bounding_cones
-                    .iter()
-                    .map(|cone| BoundingCone {
-                        cone_apex: utv::vec::Vec3::new(cone.cone_apex[0], cone.cone_apex[1], cone.cone_apex[2]),
-                        cone_axis: utv::vec::Vec3::new(cone.cone_axis[0], cone.cone_axis[1], cone.cone_axis[2]),
-                        cone_cutoff: cone.cone_axis[3],
-                    })
-                    .collect::<Vec<BoundingCone>>(),
-            ));
-            static_scenery.meshes.push(disk_mesh);
+            per_primitive_remap.push((real_mesh_id, real_material_id, material_id));
+            out_meshes.push(disk_mesh);
         }
         primitive_remap_table.push(PrimitiveRemap {
             mesh_id: mesh.index(),
             primitives: per_primitive_remap,
         });
     }
-    primitive_remap_table
+
+    (out_buffers, out_meshes, out_materials, primitive_remap_table)
 }
 
 fn convert_to_format(accessor: &gltf::accessor::Accessor) -> (usize, vk::Format, &'static str) {

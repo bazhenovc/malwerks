@@ -1,15 +1,13 @@
 [package]
-name = "malwerks_external"
+name = "malwerks_core"
 version = "0.1.0"
 authors = ["Kyrylo Bazhenov <bazhenovc@gmail.com>"]
 edition = "2018"
 license = "MPL-2.0"
 
 [dependencies]
+malwerks_vk = { path = "../malwerks_vk" }
 malwerks_bundles = { path = "../malwerks_bundles" }
-malwerks_dds = { path = "../malwerks_dds" }
 
-ash = "*"
 log = "*"
-meshopt = "*"
-bytemuck = "*"
+puffin = "*"
