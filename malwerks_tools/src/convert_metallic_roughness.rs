@@ -27,14 +27,14 @@ fn main() {
 
     let roughness_image = image::open(command_line.roughness)
         .expect("Failed to open roughness image")
-        .into_luma();
+        .into_luma8();
 
     let metallic_image = if let Some(metallic_path) = command_line.metallic {
         image::open(metallic_path)
             .expect("Failed to open metallic image")
-            .into_luma()
+            .into_luma8()
     } else {
-        image::DynamicImage::new_luma8(roughness_image.width(), roughness_image.height()).into_luma()
+        image::DynamicImage::new_luma8(roughness_image.width(), roughness_image.height()).into_luma8()
     };
 
     assert_eq!(

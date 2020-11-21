@@ -21,8 +21,7 @@ serde = { version = "*", features = ["derive"] }
 bincode = "*"
 shaderc = "*"
 
-#imgui = "*"
-imgui = "0.4"
+imgui = "*"
 
 [dev-dependencies]
 malwerks_dds = { path = "../malwerks_dds" }
