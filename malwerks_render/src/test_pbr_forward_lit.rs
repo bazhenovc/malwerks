@@ -216,7 +216,6 @@ fn render_test_frame(
     queue: &mut DeviceQueue,
 ) {
     let frame_context = device.begin_frame();
-    camera.update_matrices();
     pbr_forward_lit.render(camera, &frame_context, device, factory, queue);
 
     let command_buffer = bundle_loader.get_command_buffer_mut();
@@ -347,6 +346,7 @@ fn test_render_passes() {
                 render_height: RENDER_HEIGHT,
                 target_layer: None,
                 bundle_loader: &bundle_loader,
+                enable_anti_aliasing: false,
             },
             &device,
             &mut factory,

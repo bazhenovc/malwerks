@@ -9,20 +9,22 @@
 #include "generated://image_mapping.glsl"
 
 layout (std140, set = 2, binding = 0) uniform PerFrame {
-    mat4 view_projection;
-    mat4 inverse_view_projection;
-    vec4 camera_position;
-    vec4 camera_orientation;
+    mat4 ViewProjection;
+    mat4 InverseViewProjection;
+    mat4 ViewReprojection;
+    vec4 CameraPosition;
+    vec4 CameraOrientation;
+    vec4 ViewportSize;
 };
 
 #ifdef VERTEX_STAGE
 layout (push_constant) uniform PC_ViewProjection {
-    layout (offset = 0) mat4 ViewProjection;
+    layout (offset = 0) mat4 ViewProjectionPC;
 };
 
 void main() {
     vec4 position = fetch_vertex_attributes();
-    gl_Position = ViewProjection * position;
+    gl_Position = ViewProjectionPC * position;
 }
 #endif
 
@@ -152,7 +154,7 @@ void main() {
     float metallic = metallic_roughness.r;
     float roughness = metallic_roughness.g;
 
-    vec3 view_direction = normalize(camera_position.xyz - VS_position);
+    vec3 view_direction = normalize(CameraPosition.xyz - VS_position);
 
     const vec3 F0 = vec3(0.04);
     vec3 diffuse_color = base_color.rgb * (vec3(1.0) - F0) * (1.0 - metallic);

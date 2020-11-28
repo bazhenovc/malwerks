@@ -16,8 +16,7 @@ void main() {
 
 #ifdef FRAGMENT_STAGE
 layout(set = 0, binding = 0) uniform sampler PointSampler;
-layout(set = 0, binding = 1) uniform sampler LinearSampler;
-layout(set = 0, binding = 2) uniform texture2D FrameBuffer;
+layout(set = 0, binding = 1) uniform texture2D FrameImage;
 
 layout(location = 0) in vec2 VS_uv;
 layout(location = 0) out vec4 Target0;
@@ -31,7 +30,7 @@ vec3 tone_map(vec3 hdr)
 }
 
 void main() {
-    vec3 frame_sample = texture(sampler2D(FrameBuffer, PointSampler), VS_uv).rgb;
+    vec3 frame_sample = texture(sampler2D(FrameImage, PointSampler), VS_uv).rgb;
     Target0 = vec4(tone_map(frame_sample), 1.0);
 }
 #endif

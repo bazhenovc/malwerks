@@ -64,8 +64,6 @@ impl CameraState {
             self.rotation_y * rotation_delta,
         ));
 
-        self.camera.update_matrices();
-
         self.rotation_x = 0.0;
         self.rotation_y = 0.0;
     }

@@ -8,6 +8,7 @@ mod camera;
 mod imgui_renderer;
 mod pbr_forward_lit;
 
+mod anti_aliasing;
 mod common_shaders;
 mod material_shaders;
 mod pbr_resource_bundle;

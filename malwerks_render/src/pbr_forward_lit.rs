@@ -6,6 +6,7 @@
 use malwerks_core::*;
 use malwerks_vk::*;
 
+use crate::anti_aliasing::*;
 use crate::bundle_loader::*;
 use crate::camera::*;
 use crate::shared_frame_data::*;
@@ -17,6 +18,7 @@ pub struct PbrForwardLitParameters<'a> {
     pub render_height: u32,
     pub target_layer: Option<&'a RenderLayer>,
     pub bundle_loader: &'a BundleLoader,
+    pub enable_anti_aliasing: bool,
 }
 
 pub struct PbrForwardLit {
@@ -24,10 +26,13 @@ pub struct PbrForwardLit {
     render_bundles: Vec<(String, ResourceBundleReference, ShaderModuleBundle, PipelineBundle)>,
     pbr_resource_bundle: PbrResourceBundleReference,
 
-    sky_box: SkyBox,
     shared_frame_data: SharedFrameData,
+    sky_box: SkyBox,
 
+    anti_aliasing: Option<AntiAliasing>,
     tone_map: Option<ToneMap>,
+
+    debug_enable_anti_aliasing: bool,
 }
 
 impl PbrForwardLit {
@@ -41,6 +46,9 @@ impl PbrForwardLit {
         self.shared_frame_data.destroy(factory);
         self.sky_box.destroy(factory);
 
+        if let Some(anti_aliasing) = &mut self.anti_aliasing {
+            anti_aliasing.destroy(factory);
+        }
         if let Some(tone_map) = &mut self.tone_map {
             tone_map.destroy(factory);
         }
@@ -60,7 +68,7 @@ impl PbrForwardLit {
                 }],
                 depth_image_parameters: Some(RenderImageParameters {
                     image_format: vk::Format::D32_SFLOAT,
-                    image_usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+                    image_usage: vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::SAMPLED,
                     image_clear_value: vk::ClearValue::default(),
                 }),
                 render_pass_parameters: &[RenderPassParameters {
@@ -95,14 +103,43 @@ impl PbrForwardLit {
             factory,
         );
 
-        let tone_map = if let Some(target_layer) = parameters.target_layer {
-            Some(ToneMap::new(
+        let anti_aliasing = if parameters.enable_anti_aliasing {
+            Some(AntiAliasing::new(
                 parameters.bundle_loader.get_common_shaders(),
+                &shared_frame_data,
                 &render_layer,
                 0,
-                target_layer,
+                vk::Format::B10G11R11_UFLOAT_PACK32,
+                parameters.render_width,
+                parameters.render_height,
+                device,
                 factory,
             ))
+        } else {
+            None
+        };
+
+        let tone_map = if let Some(target_layer) = parameters.target_layer {
+            if let Some(anti_aliasing) = &anti_aliasing {
+                Some(ToneMap::new(
+                    parameters.bundle_loader.get_common_shaders(),
+                    &[
+                        anti_aliasing.get_current_render_layer(),
+                        anti_aliasing.get_previous_render_layer(),
+                    ],
+                    0,
+                    target_layer,
+                    factory,
+                ))
+            } else {
+                Some(ToneMap::new(
+                    parameters.bundle_loader.get_common_shaders(),
+                    &[&render_layer],
+                    0,
+                    target_layer,
+                    factory,
+                ))
+            }
         } else {
             None
         };
@@ -111,10 +148,12 @@ impl PbrForwardLit {
             render_layer,
             render_bundles,
             pbr_resource_bundle,
-
             shared_frame_data,
             sky_box,
+            anti_aliasing,
             tone_map,
+
+            debug_enable_anti_aliasing: parameters.enable_anti_aliasing,
         }
     }
 
@@ -139,11 +178,17 @@ impl PbrForwardLit {
                 height: viewport.height,
             },
         };
+
+        if !self.debug_enable_anti_aliasing {
+            self.shared_frame_data.reset_subsample_offset();
+        }
         self.shared_frame_data.update(frame_context, camera, factory);
 
-        let forward_color_image = self.render_layer.get_render_image(0);
+        let color_image = self.render_layer.get_render_image(0).0;
+        let depth_image = self.render_layer.get_depth_image().unwrap().0;
+
         self.render_layer.acquire_frame(frame_context, device, factory);
-        self.render_layer.begin_command_buffer(frame_context, screen_area);
+        self.render_layer.begin_render_pass(frame_context, screen_area);
         {
             let command_buffer = self.render_layer.get_command_buffer(frame_context);
             command_buffer.set_viewport(
@@ -175,7 +220,7 @@ impl PbrForwardLit {
                         pipeline_layout,
                         vk::ShaderStageFlags::VERTEX,
                         0,
-                        self.shared_frame_data.get_view_projection(),
+                        self.shared_frame_data.get_subsample_view_projection().as_slice(),
                     );
 
                     for instance in &bucket.instances {
@@ -214,41 +259,79 @@ impl PbrForwardLit {
 
             self.sky_box
                 .render(command_buffer, frame_context, &self.shared_frame_data);
-            self.render_layer.end_command_buffer(frame_context);
+            self.render_layer.end_render_pass(frame_context);
 
             let command_buffer = self.render_layer.get_command_buffer(frame_context);
             command_buffer.pipeline_barrier(
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::PipelineStageFlags::ALL_GRAPHICS,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
                 None,
                 &[],
                 &[],
-                &[vk::ImageMemoryBarrier::builder()
-                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                    .dst_access_mask(vk::AccessFlags::MEMORY_READ)
-                    .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .src_queue_family_index(!0)
-                    .dst_queue_family_index(!0)
-                    .image(forward_color_image.0)
-                    .subresource_range(
-                        vk::ImageSubresourceRange::builder()
-                            .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .base_mip_level(0)
-                            .level_count(1)
-                            .base_array_layer(0)
-                            .layer_count(1)
-                            .build(),
-                    )
-                    .build()],
+                &[
+                    vk::ImageMemoryBarrier::builder()
+                        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                        .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                        .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .src_queue_family_index(!0)
+                        .dst_queue_family_index(!0)
+                        .image(color_image)
+                        .subresource_range(
+                            vk::ImageSubresourceRange::builder()
+                                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                .base_mip_level(0)
+                                .level_count(1)
+                                .base_array_layer(0)
+                                .layer_count(1)
+                                .build(),
+                        )
+                        .build(),
+                    vk::ImageMemoryBarrier::builder()
+                        .src_access_mask(vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE)
+                        .dst_access_mask(vk::AccessFlags::MEMORY_READ)
+                        .old_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .src_queue_family_index(!0)
+                        .dst_queue_family_index(!0)
+                        .image(depth_image)
+                        .subresource_range(
+                            vk::ImageSubresourceRange::builder()
+                                .aspect_mask(vk::ImageAspectFlags::DEPTH)
+                                .base_mip_level(0)
+                                .level_count(1)
+                                .base_array_layer(0)
+                                .layer_count(1)
+                                .build(),
+                        )
+                        .build(),
+                ],
             );
         }
 
         self.render_layer.submit_commands(frame_context, queue);
+
+        if let Some(anti_aliasing) = &mut self.anti_aliasing {
+            anti_aliasing.get_current_render_layer_mut().add_dependency(
+                frame_context,
+                &self.render_layer,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+            );
+            anti_aliasing.render(
+                screen_area,
+                &self.shared_frame_data,
+                frame_context,
+                device,
+                factory,
+                queue,
+            );
+
+            self.shared_frame_data.advance_subsample_offset();
+        }
     }
 
     pub fn post_process(&mut self, camera: &Camera, frame_context: &FrameContext, target_layer: &mut RenderLayer) {
-        if let Some(tone_map) = &self.tone_map {
+        if let Some(tone_map) = &mut self.tone_map {
             let viewport = camera.get_viewport();
             let screen_area = vk::Rect2D {
                 offset: vk::Offset2D {
@@ -330,6 +413,10 @@ impl PbrForwardLit {
     pub fn get_render_bundles(&self) -> &[(String, ResourceBundleReference, ShaderModuleBundle, PipelineBundle)] {
         &self.render_bundles
     }
+
+    pub fn debug_enable_anti_aliasing(&mut self, enable: bool) {
+        self.debug_enable_anti_aliasing = enable;
+    }
 }
 
 impl PbrForwardLit {
@@ -342,7 +429,11 @@ impl PbrForwardLit {
     }
 
     pub fn get_render_layer(&self) -> &RenderLayer {
-        &self.render_layer
+        if let Some(anti_aliasing) = &self.anti_aliasing {
+            anti_aliasing.get_previous_render_layer()
+        } else {
+            &self.render_layer
+        }
     }
 
     pub fn get_render_layer_mut(&mut self) -> &mut RenderLayer {

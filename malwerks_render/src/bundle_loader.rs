@@ -627,6 +627,7 @@ fn compile_common_shaders(base_path: &std::path::Path) -> DiskCommonShaders {
     );
 
     let (skybox_vertex_stage, skybox_fragment_stage) = compile_environment_probe_shaders(base_path);
+    let (anti_aliasing_vertex_stage, anti_aliasing_fragment_stage) = compile_anti_aliasing_shaders(base_path);
     DiskCommonShaders {
         apex_culling_compute_stage,
         occlusion_culling_compute_stage,
@@ -638,11 +639,56 @@ fn compile_common_shaders(base_path: &std::path::Path) -> DiskCommonShaders {
         occluder_resolve_fragment_stage,
         skybox_vertex_stage,
         skybox_fragment_stage,
+        anti_aliasing_vertex_stage,
+        anti_aliasing_fragment_stage,
         tone_map_vertex_stage,
         tone_map_fragment_stage,
         imgui_vertex_stage,
         imgui_fragment_stage,
     }
+}
+
+fn compile_anti_aliasing_shaders(base_path: &std::path::Path) -> (Vec<u32>, Vec<u32>) {
+    let anti_aliasing_glsl = std::fs::read_to_string(base_path.join("malwerks_shaders").join("anti_aliasing.glsl"))
+        .expect("failed to open anti_aliasing.glsl");
+
+    let mut compile_options = shaderc::CompileOptions::new().expect("failed to initialize GLSL compiler options");
+    compile_options.set_source_language(shaderc::SourceLanguage::GLSL);
+    compile_options.set_optimization_level(shaderc::OptimizationLevel::Performance);
+    compile_options.set_warnings_as_errors();
+
+    let mut vertex_stage_options = compile_options.clone().expect("failed to clone vertex options");
+    vertex_stage_options.add_macro_definition("VERTEX_STAGE", None);
+    let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
+    fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
+
+    let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
+    let skybox_vertex_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &anti_aliasing_glsl,
+                shaderc::ShaderKind::Vertex,
+                "anti_aliasing.glsl",
+                "main",
+                Some(&vertex_stage_options),
+            )
+            .expect("failed to compile vertex shader")
+            .as_binary(),
+    );
+    let skybox_fragment_stage = Vec::from(
+        compiler
+            .compile_into_spirv(
+                &anti_aliasing_glsl,
+                shaderc::ShaderKind::Fragment,
+                "anti_aliasing.glsl",
+                "main",
+                Some(&fragment_stage_options),
+            )
+            .expect("failed to compile fragment shader")
+            .as_binary(),
+    );
+
+    (skybox_vertex_stage, skybox_fragment_stage)
 }
 
 fn compile_environment_probe_shaders(base_path: &std::path::Path) -> (Vec<u32>, Vec<u32>) {
@@ -659,12 +705,12 @@ fn compile_environment_probe_shaders(base_path: &std::path::Path) -> (Vec<u32>, 
     let mut fragment_stage_options = compile_options.clone().expect("failed to clone fragment options");
     fragment_stage_options.add_macro_definition("FRAGMENT_STAGE", None);
 
-    let mut ray_tracing_options = compile_options.clone().expect("failed to clone ray tracing options");
-    ray_tracing_options.add_macro_definition("RAY_TRACING", None);
-    let mut ray_gen_options = ray_tracing_options.clone().expect("failed to clone ray gen options");
-    ray_gen_options.add_macro_definition("RAY_GEN_STAGE", None);
-    let mut ray_miss_options = ray_tracing_options.clone().expect("failed to clone ray miss options");
-    ray_miss_options.add_macro_definition("RAY_MISS_STAGE", None);
+    // let mut ray_tracing_options = compile_options.clone().expect("failed to clone ray tracing options");
+    // ray_tracing_options.add_macro_definition("RAY_TRACING", None);
+    // let mut ray_gen_options = ray_tracing_options.clone().expect("failed to clone ray gen options");
+    // ray_gen_options.add_macro_definition("RAY_GEN_STAGE", None);
+    // let mut ray_miss_options = ray_tracing_options.clone().expect("failed to clone ray miss options");
+    // ray_miss_options.add_macro_definition("RAY_MISS_STAGE", None);
 
     let mut compiler = shaderc::Compiler::new().expect("failed to initialize GLSL compiler");
     let skybox_vertex_stage = Vec::from(

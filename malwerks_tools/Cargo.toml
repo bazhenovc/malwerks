@@ -44,3 +44,7 @@ path = "src/convert_metallic_roughness.rs"
 [[bin]]
 name = "import_ply"
 path = "src/import_ply.rs"
+
+[[bin]]
+name = "halton_sequence"
+path = "src/halton_sequence.rs"

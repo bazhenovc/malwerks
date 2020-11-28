@@ -20,6 +20,9 @@ pub struct DiskCommonShaders {
     pub skybox_vertex_stage: Vec<u32>,
     pub skybox_fragment_stage: Vec<u32>,
 
+    pub anti_aliasing_vertex_stage: Vec<u32>,
+    pub anti_aliasing_fragment_stage: Vec<u32>,
+
     pub tone_map_vertex_stage: Vec<u32>,
     pub tone_map_fragment_stage: Vec<u32>,
 

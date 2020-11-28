@@ -15,8 +15,12 @@ pub struct SharedFrameData {
     frame_data_descriptor_set: FrameLocal<vk::DescriptorSet>,
     frame_data_buffer: FrameLocal<HeapAllocatedResource<vk::Buffer>>,
 
-    view_projection: [f32; 16],
-    view_position: [f32; 4],
+    view_subsample_offset: [f32; 2],
+    view_subsample_index: usize,
+
+    previous_view_projection: ultraviolet::mat::Mat4,
+    view_projection: ultraviolet::mat::Mat4,
+    subsample_view_projection: ultraviolet::mat::Mat4,
 }
 
 impl SharedFrameData {
@@ -90,8 +94,11 @@ impl SharedFrameData {
             descriptor_set_layout,
             frame_data_descriptor_set,
             frame_data_buffer,
-            view_projection: Default::default(),
-            view_position: Default::default(),
+            view_subsample_offset: Default::default(),
+            view_subsample_index: Default::default(),
+            previous_view_projection: ultraviolet::mat::Mat4::identity(),
+            view_projection: ultraviolet::mat::Mat4::identity(),
+            subsample_view_projection: ultraviolet::mat::Mat4::identity(),
         }
     }
 
@@ -102,11 +109,26 @@ impl SharedFrameData {
             .destroy(|buffer| factory.deallocate_buffer(buffer));
     }
 
+    pub fn advance_subsample_offset(&mut self) {
+        self.view_subsample_offset = SUBSAMPLE_OFFSETS[self.view_subsample_index];
+        self.view_subsample_index = (self.view_subsample_index + 1) % SUBSAMPLE_OFFSETS.len();
+    }
+
+    pub fn reset_subsample_offset(&mut self) {
+        self.view_subsample_offset = Default::default();
+    }
+
     pub fn update(&mut self, frame_context: &FrameContext, camera: &Camera, factory: &mut DeviceFactory) {
         let view_position = -camera.position;
-        let view_projection = camera.get_view_projection();
-        self.view_projection.copy_from_slice(view_projection.as_slice());
-        self.view_position[0..3].copy_from_slice(view_position.as_slice());
+        let (view_projection, subsample_view_projection) = camera.calculate_view_projection(self.view_subsample_offset);
+        let inverted_view_projection = view_projection.inversed();
+        let view_reprojection = self.previous_view_projection * inverted_view_projection;
+
+        let viewport = camera.get_viewport();
+        let viewport_size = [
+            (viewport.width as i32 - viewport.x) as f32,
+            (viewport.height as i32 - viewport.y) as f32,
+        ];
 
         let mut per_frame_data = PerFrameData::default();
         per_frame_data
@@ -114,9 +136,18 @@ impl SharedFrameData {
             .copy_from_slice(view_projection.as_slice());
         per_frame_data
             .inverse_view_projection
-            .copy_from_slice(view_projection.inversed().as_slice());
+            .copy_from_slice(inverted_view_projection.as_slice());
+        per_frame_data
+            .view_reprojection
+            .copy_from_slice(view_reprojection.as_slice());
         per_frame_data.view_position[0..3].copy_from_slice(view_position.as_slice());
-        //per_frame_data
+        per_frame_data.viewport_size = [
+            viewport_size[0],
+            viewport_size[1],
+            1.0 / viewport_size[0],
+            1.0 / viewport_size[1],
+        ];
+        // per_frame_data
         //    .camera_orientation
         //    .copy_from_slice(camera.orientation.as_slice());
         let frame_data_buffer = self.frame_data_buffer.get(frame_context);
@@ -124,10 +155,14 @@ impl SharedFrameData {
         let per_frame_memory = factory.map_allocation_memory(&frame_data_buffer);
         copy_to_mapped_memory(&[per_frame_data], per_frame_memory);
         factory.unmap_allocation_memory(&frame_data_buffer);
+
+        self.previous_view_projection = self.view_projection;
+        self.view_projection = view_projection;
+        self.subsample_view_projection = subsample_view_projection;
     }
 
-    pub fn get_view_projection(&self) -> &[f32] {
-        &self.view_projection
+    pub fn get_subsample_view_projection(&self) -> &ultraviolet::mat::Mat4 {
+        &self.subsample_view_projection
     }
 
     // pub fn get_view_position(&self) -> &[f32] {
@@ -144,6 +179,19 @@ impl SharedFrameData {
 struct PerFrameData {
     pub view_projection: [f32; 16],
     pub inverse_view_projection: [f32; 16],
+    pub view_reprojection: [f32; 16],
     pub view_position: [f32; 4],
     pub camera_orientation: [f32; 4],
+    pub viewport_size: [f32; 4],
 }
+
+const SUBSAMPLE_OFFSETS: [[f32; 2]; 8] = [
+    [-0.5, 0.33333337],
+    [0.5, -0.7777778],
+    [-0.75, -0.111111104],
+    [0.25, 0.5555556],
+    [-0.25, -0.5555556],
+    [0.75, 0.111111164],
+    [-0.875, 0.7777778],
+    [0.125, -0.9259259],
+];

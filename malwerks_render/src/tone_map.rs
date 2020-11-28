@@ -10,23 +10,24 @@ use crate::common_shaders::*;
 
 pub struct ToneMap {
     point_sampler: vk::Sampler,
-    linear_sampler: vk::Sampler,
 
     descriptor_pool: vk::DescriptorPool,
     descriptor_set_layout: vk::DescriptorSetLayout,
-    descriptor_set: vk::DescriptorSet,
+    descriptor_sets: Vec<vk::DescriptorSet>,
 
     vert_module: vk::ShaderModule,
     frag_module: vk::ShaderModule,
 
     pipeline_layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
+
+    current_source_image: usize,
 }
 
 impl ToneMap {
     pub fn new(
         common_shaders: &DiskCommonShaders,
-        source_layer: &RenderLayer,
+        source_layers: &[&RenderLayer],
         source_image: usize,
         target_layer: &RenderLayer,
         factory: &mut DeviceFactory,
@@ -60,26 +61,20 @@ impl ToneMap {
                 .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
                 .build(),
         );
-        let linear_sampler = factory.create_sampler(
-            &vk::SamplerCreateInfo::builder()
-                .mag_filter(vk::Filter::LINEAR)
-                .min_filter(vk::Filter::LINEAR)
-                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .build(),
-        );
 
         let descriptor_pool = factory.create_descriptor_pool(
-            &vk::DescriptorPoolCreateInfo::builder().max_sets(1).pool_sizes(&[
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::SAMPLER)
-                    .descriptor_count(2)
-                    .build(),
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::SAMPLED_IMAGE)
-                    .descriptor_count(1)
-                    .build(),
-            ]),
+            &vk::DescriptorPoolCreateInfo::builder()
+                .max_sets(source_layers.len() as _)
+                .pool_sizes(&[
+                    vk::DescriptorPoolSize::builder()
+                        .ty(vk::DescriptorType::SAMPLER)
+                        .descriptor_count(1)
+                        .build(),
+                    vk::DescriptorPoolSize::builder()
+                        .ty(vk::DescriptorType::SAMPLED_IMAGE)
+                        .descriptor_count(1)
+                        .build(),
+                ]),
         );
         let descriptor_set_layout = factory.create_descriptor_set_layout(
             &vk::DescriptorSetLayoutCreateInfo::builder().bindings(&[
@@ -91,51 +86,51 @@ impl ToneMap {
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .descriptor_count(1)
                     .stage_flags(vk::ShaderStageFlags::FRAGMENT)
                     .build(),
             ]),
         );
-        let descriptor_set = factory.allocate_descriptor_sets(
+        let temp_per_desriptor_set_layouts = vec![descriptor_set_layout; source_layers.len()];
+        let descriptor_sets = factory.allocate_descriptor_sets(
             &vk::DescriptorSetAllocateInfo::builder()
                 .descriptor_pool(descriptor_pool)
-                .set_layouts(&[descriptor_set_layout])
+                .set_layouts(&temp_per_desriptor_set_layouts)
                 .build(),
-        )[0];
+        );
 
-        factory.update_descriptor_sets(
-            &[
+        let mut temp_image_infos = Vec::with_capacity(source_layers.len() * 2);
+        let mut temp_descriptor_writes = Vec::with_capacity(source_layers.len() * 2);
+        for (target_set, layer) in source_layers.iter().enumerate() {
+            let image_info_start = temp_image_infos.len();
+            temp_image_infos.push(vk::DescriptorImageInfo::builder().sampler(point_sampler).build());
+            temp_image_infos.push(
+                vk::DescriptorImageInfo::builder()
+                    .image_view(layer.get_render_image(source_image).1)
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .build(),
+            );
+
+            temp_descriptor_writes.push(
                 vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
+                    .dst_set(descriptor_sets[target_set])
                     .dst_binding(0)
                     .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(point_sampler).build()])
+                    .image_info(&temp_image_infos[image_info_start..image_info_start + 1])
                     .build(),
+            );
+            temp_descriptor_writes.push(
                 vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
+                    .dst_set(descriptor_sets[target_set])
                     .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(linear_sampler).build()])
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
-                    .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                    .image_info(&[vk::DescriptorImageInfo::builder()
-                        .image_view(source_layer.get_render_image(source_image).1)
-                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .build()])
+                    .image_info(&temp_image_infos[image_info_start + 1..image_info_start + 2])
                     .build(),
-            ],
-            &[],
-        );
+            );
+        }
+
+        factory.update_descriptor_sets(&temp_descriptor_writes, &[]);
 
         let pipeline_layout = factory.create_pipeline_layout(
             &vk::PipelineLayoutCreateInfo::builder()
@@ -208,20 +203,19 @@ impl ToneMap {
 
         Self {
             point_sampler,
-            linear_sampler,
             descriptor_pool,
             descriptor_set_layout,
-            descriptor_set,
+            descriptor_sets,
             vert_module,
             frag_module,
             pipeline_layout,
             pipeline,
+            current_source_image: 0,
         }
     }
 
     pub fn destroy(&mut self, factory: &mut DeviceFactory) {
         factory.destroy_sampler(self.point_sampler);
-        factory.destroy_sampler(self.linear_sampler);
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
         factory.destroy_shader_module(self.vert_module);
@@ -230,7 +224,7 @@ impl ToneMap {
         factory.destroy_pipeline(self.pipeline);
     }
 
-    pub fn render(&self, screen_area: vk::Rect2D, frame_context: &FrameContext, target_layer: &mut RenderLayer) {
+    pub fn render(&mut self, screen_area: vk::Rect2D, frame_context: &FrameContext, target_layer: &mut RenderLayer) {
         let command_buffer = target_layer.get_command_buffer(frame_context);
 
         command_buffer.bind_pipeline(vk::PipelineBindPoint::GRAPHICS, self.pipeline);
@@ -238,7 +232,7 @@ impl ToneMap {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_layout,
             0,
-            &[self.descriptor_set],
+            &[self.descriptor_sets[self.current_source_image]],
             &[],
         );
         command_buffer.set_viewport(
@@ -254,5 +248,7 @@ impl ToneMap {
         );
         command_buffer.set_scissor(0, &[screen_area]);
         command_buffer.draw(3, 1, 0, 0);
+
+        self.current_source_image = (self.current_source_image + 1) % self.descriptor_sets.len();
     }
 }

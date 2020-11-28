@@ -126,19 +126,11 @@ impl Game {
                 render_height: surface_size.height,
                 target_layer: Some(surface_pass.get_render_layer()),
                 bundle_loader: &bundle_loader,
+                enable_anti_aliasing: true,
             },
             &device,
             &mut factory,
         );
-        // pbr_forward_lit.add_render_bundle(
-        //     "Lantern",
-        //     &mut bundle_loader,
-        //     &command_line.assets_folder.join("lantern/Lantern.gltf"),
-        //     &command_line.assets_folder.join("Lantern.resource_bundle"),
-        //     &device,
-        //     &mut factory,
-        //     &mut queue,
-        // );
 
         let mut imgui = imgui::Context::create();
         let mut imgui_platform = imgui_winit::WinitPlatform::init(&mut imgui);
@@ -264,13 +256,6 @@ impl Game {
             {
                 puffin::profile_scope!("render_world");
 
-                // setup render layers
-                surface_layer.add_dependency(
-                    &frame_context,
-                    self.pbr_forward_lit.get_render_layer(),
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                );
-
                 // render world
                 self.camera_state.update(time_delta);
                 self.pbr_forward_lit.render(
@@ -290,9 +275,14 @@ impl Game {
                     }
                 };
                 surface_layer.acquire_frame(&frame_context, &mut self.device, &mut self.factory);
+                surface_layer.add_dependency(
+                    &frame_context,
+                    self.pbr_forward_lit.get_render_layer(),
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                );
                 surface_layer
                     .add_wait_condition(image_ready_semaphore, vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
-                surface_layer.begin_command_buffer(&frame_context, screen_area);
+                surface_layer.begin_render_pass(&frame_context, screen_area);
                 self.pbr_forward_lit
                     .post_process(self.camera_state.get_camera(), &frame_context, surface_layer);
             }
@@ -343,7 +333,11 @@ impl Game {
 
         {
             puffin::profile_scope!("present");
-            surface_layer.end_command_buffer(&frame_context);
+            surface_layer.end_render_pass(&frame_context);
+
+            // let command_buffer = surface_layer.get_command_buffer(&frame_context);
+            // self.pbr_forward_lit.copy_images(command_buffer);
+
             surface_layer.submit_commands(&frame_context, &mut self.queue);
             self.surface.present(
                 &mut self.queue,

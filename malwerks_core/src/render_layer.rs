@@ -364,7 +364,7 @@ impl RenderLayer {
         );
     }
 
-    pub fn begin_command_buffer(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D) {
+    pub fn begin_render_pass(&mut self, frame_context: &FrameContext, render_area: vk::Rect2D) {
         let command_buffer = self.command_buffer.get_mut(frame_context);
         command_buffer.begin_render_pass(
             &vk::RenderPassBeginInfo::builder()
@@ -377,7 +377,7 @@ impl RenderLayer {
         );
     }
 
-    pub fn end_command_buffer(&mut self, frame_context: &FrameContext) {
+    pub fn end_render_pass(&mut self, frame_context: &FrameContext) {
         let command_buffer = self.command_buffer.get_mut(frame_context);
         command_buffer.end_render_pass();
 

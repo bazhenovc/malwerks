@@ -92,6 +92,14 @@ pub fn show_pbr_forward_lit_window<'a>(
     Window::new(im_str!("PbrForwardLit"))
         .always_auto_resize(true)
         .build(ui, || {
+            ui.text(im_str!("Settings"));
+            static mut ANTI_ALIASING: bool = true;
+            if ui.checkbox(im_str!("Anti aliasing"), unsafe { &mut ANTI_ALIASING }) {
+                pbr_forward_lit.debug_enable_anti_aliasing(unsafe { ANTI_ALIASING });
+            }
+            ui.separator();
+            ui.text(im_str!("Test bundles"));
+
             macro_rules! bundle_checkbox {
                 ($gltf_path: expr, $bundle_path: expr) => {{
                     static mut BUNDLE_FLAG: bool = false;
@@ -116,6 +124,10 @@ pub fn show_pbr_forward_lit_window<'a>(
             bundle_checkbox!("lantern/Lantern.gltf", "Lantern.resource_bundle");
             bundle_checkbox!("sponza/Sponza.gltf", "Sponza.resource_bundle");
             bundle_checkbox!("house_test/housetest2.gltf", "housetest2.resource_bundle");
+            bundle_checkbox!("damaged_helmet/DamagedHelmet.gltf", "damaged_helmet.resource_bundle");
+            bundle_checkbox!("scifi_helmet/SciFiHelmet.gltf", "scifi_helmet.resource_bundle");
+            bundle_checkbox!("antique_camera/AntiqueCamera.gltf", "antique_camera.resource_bundle");
+            bundle_checkbox!("sun_temple/SunTemple.gltf", "sun_temple.resource_bundle");
 
             let bundles = pbr_forward_lit.get_render_bundles();
             ui.text(ImString::from(format!("Bundles: {}", bundles.len())));

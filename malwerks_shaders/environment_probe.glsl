@@ -12,6 +12,7 @@
 layout (std140, set = 0, binding = 0) uniform PerFrame {
     mat4 view_projection;
     mat4 inverse_view_projection;
+    mat4 view_reprojection;
     vec4 camera_position;
     vec4 camera_orientation;
 };
