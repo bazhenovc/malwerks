@@ -30,19 +30,27 @@ struct CommandLineOptions {
     enable_validation: bool,
 
     #[structopt(
-        short = "f",
-        long = "force_import",
-        help = "Forces the application to re-import all .gltf files. This operation can take a few minutes."
-    )]
-    force_import: bool,
-
-    #[structopt(
         short = "c",
         long = "compression_level",
         default_value = "9",
         help = "Controls compression level for all bundles"
     )]
     compression_level: u32,
+
+    #[structopt(
+        long = "force_import_bundles",
+        help = "Forces the application to re-import all bundles even if their cached versions exist"
+    )]
+    force_import_bundles: bool,
+
+    #[structopt(
+        long = "force_compile_shaders",
+        help = "Forces the application to compile all shaders even if their cached versions exist"
+    )]
+    force_compile_shaders: bool,
+
+    #[structopt(long = "no_anti_aliasing", help = "Disables anti-aliasing filters completely")]
+    no_anti_aliasing: bool,
 }
 
 struct Game {
@@ -114,6 +122,8 @@ impl Game {
                 base_path,
                 shader_bundle_path: &command_line.assets_folder.join("common_shaders.bundle"),
                 pbr_resource_folder: &command_line.assets_folder.join("pbr_resources"),
+                force_import_bundles: command_line.force_import_bundles,
+                force_compile_shaders: command_line.force_compile_shaders,
             },
             &device,
             &mut factory,
@@ -126,7 +136,7 @@ impl Game {
                 render_height: surface_size.height,
                 target_layer: Some(surface_pass.get_render_layer()),
                 bundle_loader: &bundle_loader,
-                enable_anti_aliasing: true,
+                enable_anti_aliasing: !command_line.no_anti_aliasing,
             },
             &device,
             &mut factory,

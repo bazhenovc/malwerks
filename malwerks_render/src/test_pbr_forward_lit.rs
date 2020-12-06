@@ -334,6 +334,8 @@ fn test_render_passes() {
                 base_path: &base_path,
                 shader_bundle_path: &base_path.join("assets").join("common_shaders.bundle"),
                 pbr_resource_folder: &base_path.join("assets").join("pbr_resources"),
+                force_import_bundles: true,
+                force_compile_shaders: true,
             },
             &device,
             &mut factory,

@@ -13,7 +13,6 @@ pub struct AntiAliasing {
     render_layers: [RenderLayer; 2],
 
     point_sampler: vk::Sampler,
-    linear_sampler: vk::Sampler,
     descriptor_pool: vk::DescriptorPool,
     descriptor_set_layout: vk::DescriptorSetLayout,
     descriptor_sets: Vec<vk::DescriptorSet>,
@@ -34,7 +33,6 @@ impl AntiAliasing {
             render_layer.destroy(factory);
         }
         factory.destroy_sampler(self.point_sampler);
-        factory.destroy_sampler(self.linear_sampler);
         factory.destroy_descriptor_pool(self.descriptor_pool);
         factory.destroy_descriptor_set_layout(self.descriptor_set_layout);
         factory.destroy_shader_module(self.vert_module);
@@ -114,16 +112,6 @@ impl AntiAliasing {
                 .max_lod(std::f32::MAX)
                 .build(),
         );
-        let linear_sampler = factory.create_sampler(
-            &vk::SamplerCreateInfo::builder()
-                .mag_filter(vk::Filter::LINEAR)
-                .min_filter(vk::Filter::LINEAR)
-                .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
-                .min_lod(0.0)
-                .max_lod(std::f32::MAX)
-                .build(),
-        );
 
         let descriptor_pool = factory.create_descriptor_pool(
             &vk::DescriptorPoolCreateInfo::builder().max_sets(2).pool_sizes(&[
@@ -147,7 +135,7 @@ impl AntiAliasing {
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .descriptor_count(1)
                     .stage_flags(vk::ShaderStageFlags::FRAGMENT)
                     .build(),
@@ -159,12 +147,6 @@ impl AntiAliasing {
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(3)
-                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(4)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .descriptor_count(1)
                     .stage_flags(vk::ShaderStageFlags::FRAGMENT)
@@ -194,12 +176,6 @@ impl AntiAliasing {
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_sets[0])
                     .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(linear_sampler).build()])
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_sets[0])
-                    .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
                         .image_view(source_color_image)
@@ -208,7 +184,7 @@ impl AntiAliasing {
                     .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_sets[0])
-                    .dst_binding(3)
+                    .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
                         .image_view(source_depth_image)
@@ -217,7 +193,7 @@ impl AntiAliasing {
                     .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_sets[0])
-                    .dst_binding(4)
+                    .dst_binding(3)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
                         .image_view(render_layers[1].get_render_image(0).1)
@@ -233,12 +209,6 @@ impl AntiAliasing {
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_sets[1])
                     .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo::builder().sampler(linear_sampler).build()])
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_sets[1])
-                    .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
                         .image_view(source_color_image)
@@ -247,7 +217,7 @@ impl AntiAliasing {
                     .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_sets[1])
-                    .dst_binding(3)
+                    .dst_binding(2)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
                         .image_view(source_depth_image)
@@ -256,7 +226,7 @@ impl AntiAliasing {
                     .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_set(descriptor_sets[1])
-                    .dst_binding(4)
+                    .dst_binding(3)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                     .image_info(&[vk::DescriptorImageInfo::builder()
                         .image_view(render_layers[0].get_render_image(0).1)
@@ -342,7 +312,6 @@ impl AntiAliasing {
         Self {
             render_layers,
             point_sampler,
-            linear_sampler,
             descriptor_pool,
             descriptor_set_layout,
             descriptor_sets,

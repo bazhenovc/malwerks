@@ -4,7 +4,7 @@
 .nsight
 /target
 /assets
-Session.vim
+*.vim
 *.sublime-project
 *.sublime-workspace
 

@@ -51,6 +51,8 @@ pub struct BundleLoaderParameters<'a> {
     pub base_path: &'a std::path::Path,
     pub shader_bundle_path: &'a std::path::Path,
     pub pbr_resource_folder: &'a std::path::Path,
+    pub force_import_bundles: bool,
+    pub force_compile_shaders: bool,
 }
 
 pub struct BundleLoader {
@@ -66,6 +68,7 @@ pub struct BundleLoader {
     base_path: std::path::PathBuf,
     temporary_folder: std::path::PathBuf,
     compression_level: u32,
+    force_import_bundles: bool,
 }
 
 impl BundleLoader {
@@ -93,11 +96,13 @@ impl BundleLoader {
             parameters.base_path,
             parameters.shader_bundle_path,
             parameters.bundle_compression_level,
+            parameters.force_compile_shaders,
         );
         let pbr_resource_bundle = std::rc::Rc::new(std::cell::RefCell::new(import_pbr_resource_bundle(
             &parameters.temporary_folder.join("pbr_resource_bundle"),
             parameters.pbr_resource_folder,
             parameters.bundle_compression_level,
+            parameters.force_import_bundles,
             &mut command_buffers[0],
             device,
             factory,
@@ -109,6 +114,7 @@ impl BundleLoader {
         let base_path = parameters.base_path.to_path_buf();
         let temporary_folder = parameters.temporary_folder.to_path_buf();
         let compression_level = parameters.bundle_compression_level;
+        let force_import_bundles = parameters.force_import_bundles;
 
         Self {
             command_pool,
@@ -120,6 +126,7 @@ impl BundleLoader {
             base_path,
             temporary_folder,
             compression_level,
+            force_import_bundles,
         }
     }
 
@@ -181,6 +188,7 @@ impl BundleLoader {
                     gltf_file,
                     bundle_file,
                     self.compression_level,
+                    self.force_import_bundles,
                     &mut self.command_buffers[0],
                     device,
                     factory,
@@ -300,13 +308,14 @@ fn import_pbr_resource_bundle(
     temporary_path: &std::path::Path,
     input_path: &std::path::Path,
     compression_level: u32,
+    force_import: bool,
     command_buffer: &mut CommandBuffer,
     _device: &Device,
     factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
 ) -> PbrResourceBundle {
     let bundle_file = input_path.with_extension("bundle");
-    let disk_bundle = if !bundle_file.exists() {
+    let disk_bundle = if force_import || !bundle_file.exists() {
         let precomputed_brdf_image = compress_image(
             ImageUsage::EnvironmentBrdf,
             temporary_path,
@@ -365,12 +374,13 @@ fn import_bundle(
     gltf_file: &std::path::Path,
     bundle_file: &std::path::Path,
     compression_level: u32,
+    force_import: bool,
     command_buffer: &mut CommandBuffer,
     _device: &Device,
     factory: &mut DeviceFactory,
     queue: &mut DeviceQueue,
 ) -> ResourceBundle {
-    let disk_resource_bundle = if !bundle_file.exists() {
+    let disk_resource_bundle = if force_import || !bundle_file.exists() {
         let bundle = import_gltf_bundle(gltf_file, &temporary_path.join(gltf_file));
         // if clusterize_meshes {
         //     clusterize_bundle_in_place(&mut bundle);
@@ -415,8 +425,9 @@ fn import_common_shaders(
     base_path: &std::path::Path,
     shader_bundle_path: &std::path::Path,
     compression_level: u32,
+    force_compile: bool,
 ) -> DiskCommonShaders {
-    let disk_common_shaders = if !shader_bundle_path.exists() {
+    let disk_common_shaders = if force_compile || !shader_bundle_path.exists() {
         let bundle = compile_common_shaders(base_path);
         let file = std::fs::OpenOptions::new()
             .create(true)
