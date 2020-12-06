@@ -3,9 +3,15 @@ A highly opinionated graphics research framework.
 
 Please note that this is a personal pet project and I am not accepting pull requests at the moment.
 
-Currently a bare-minimum PBR renderer with apex and occlusion culling is implemented, lantern model is from [Khronos glTF Sample Models](https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/Lantern):
+Currently a bare-minimum PBR renderer with temporal anti aliasing, apex and occlusion culling is implemented, lantern and helmet models are from [Khronos glTF Sample Models](https://github.com/KhronosGroup/glTF-Sample-Models/tree/master/2.0/Lantern):
 
 ![PBR Lantern](assets/screenshots/lantern.png)
+
+## Temporal anti aliasing
+
+A standard temporal anti aliasing with depth reprojection, color clipping and a 4 tap Sinc/Lanczos filter. Make sure to view this image in full resolution, differences between linear and Lanczos filtering are very subtle.
+
+![AA_Comparison](assets/screenshots/aa_comp.png)
 
 ## Apex and occlusion culling
 
