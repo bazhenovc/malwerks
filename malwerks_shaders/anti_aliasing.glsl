@@ -145,7 +145,7 @@ void main() {
 
     float source_luminance = luminance(source_sample);
     float frame_luminance = luminance(frame_sample);
-    float luminance_weight = 1.0 - abs(source_luminance - frame_luminance) / max(source_luminance, max(frame_luminance, 0.1)); 
+    float luminance_weight = 1.0 - abs(source_luminance - frame_luminance) / max(source_luminance, max(frame_luminance, 0.2));
 
     float weight = mix(0.97, 0.999, luminance_weight * luminance_weight);
     Target0 = vec4(mix(source_sample, frame_sample, weight), 1.0);
