@@ -141,8 +141,13 @@ void main() {
     sample_clip_min_max(SourceColorImage, PointSampler, VS_uv, source_sample, clip_min, clip_max);
 
     vec2 uv = reproject_uv(ViewReprojection, VS_uv, depth_sample);
-    vec3 frame_sample = sample_lanczos_rgb(FrameImage, PointSampler, uv);
+    vec3 frame_sample = clip_color(clip_min, clip_max, sample_lanczos_rgb(FrameImage, PointSampler, uv));
 
-    Target0 = vec4(mix(source_sample, clip_color(clip_min, clip_max, frame_sample), 0.9), 1.0);
+    float source_luminance = luminance(source_sample);
+    float frame_luminance = luminance(frame_sample);
+    float luminance_weight = 1.0 - abs(source_luminance - frame_luminance) / max(source_luminance, max(frame_luminance, 0.1)); 
+
+    float weight = mix(0.97, 0.999, luminance_weight * luminance_weight);
+    Target0 = vec4(mix(source_sample, frame_sample, weight), 1.0);
 }
 #endif
