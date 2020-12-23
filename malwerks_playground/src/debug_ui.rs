@@ -128,6 +128,7 @@ pub fn show_pbr_forward_lit_window<'a>(
             bundle_checkbox!("scifi_helmet/SciFiHelmet.gltf", "scifi_helmet.resource_bundle");
             bundle_checkbox!("antique_camera/AntiqueCamera.gltf", "antique_camera.resource_bundle");
             bundle_checkbox!("sun_temple/SunTemple.gltf", "sun_temple.resource_bundle");
+            bundle_checkbox!("bistro/BistroInterior.gltf", "bistro_interior.resource_bundle");
 
             let bundles = pbr_forward_lit.get_render_bundles();
             ui.text(ImString::from(format!("Bundles: {}", bundles.len())));

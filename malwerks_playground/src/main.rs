@@ -209,12 +209,20 @@ impl Game {
             pbr_forward_lit,
             frame_time: std::time::Instant::now(),
             input_map,
-            camera_state: camera_state::CameraState::new(Viewport {
-                x: 0,
-                y: 0,
-                width: surface_size.width,
-                height: surface_size.height,
-            }),
+            camera_state: camera_state::CameraState::new(
+                Some(
+                    &command_line
+                        .assets_folder
+                        .join("temporary_folder")
+                        .join("camera_state.bin"),
+                ),
+                Viewport {
+                    x: 0,
+                    y: 0,
+                    width: surface_size.width,
+                    height: surface_size.height,
+                },
+            ),
             command_line,
         }
     }

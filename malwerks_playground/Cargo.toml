@@ -27,16 +27,10 @@ puffin = "*"
 puffin-imgui = "*"
 structopt = "*"
 ultraviolet = "*"
+ash-window = "*"
 
-# TODO: Decouple serde, bincode and shaderc dependencies
+# TODO: Decouple serde, bincode, byteorder and shaderc dependencies
 serde = { version = "*", features = ["derive"] }
-shaderc = "*"
 bincode = "*"
-
-[target.'cfg(windows)'.dependencies]
-winapi = "*"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-metal-rs = "*"
-cocoa = "*"
-objc = "*"
+byteorder = "*"
+shaderc = "*"
