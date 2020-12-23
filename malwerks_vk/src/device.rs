@@ -12,11 +12,6 @@ use crate::internal::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_void};
 
-pub enum SurfaceMode<T> {
-    WindowSurface(T),
-    Headless(T),
-}
-
 #[derive(Default, Clone, Copy)]
 pub struct DeviceOptions {
     pub enable_validation: bool,
@@ -39,9 +34,14 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new<T>(surface_mode: SurfaceMode<T>, options: DeviceOptions) -> Self
+    pub fn new<T>(
+        instance_extensions: &[&CStr],
+        device_extensions: &[&CStr],
+        create_surface: T,
+        options: DeviceOptions,
+    ) -> Self
     where
-        T: Fn(&ash::Entry, &ash::Instance) -> vk::SurfaceKHR,
+        T: Fn(&ash::Entry, &ash::Instance) -> (Option<ash::extensions::khr::Surface>, vk::SurfaceKHR),
     {
         let entry = ash::Entry::new().unwrap();
         let instance = unsafe {
@@ -52,12 +52,11 @@ impl Device {
                 layer_names.push(layer_name_data.last().unwrap().as_ptr());
             }
 
-            let mut instance_extension_names = Vec::with_capacity(PLATFORM_EXTENSION_NAME_COUNT + 2);
-            if let SurfaceMode::WindowSurface(_) = surface_mode {
-                for ext in get_platform_extension_names().iter() {
-                    instance_extension_names.push(*ext);
-                }
+            let mut instance_extension_names = Vec::with_capacity(instance_extensions.len() + 2);
+            for ext in instance_extensions {
+                instance_extension_names.push(ext.as_ptr());
             }
+
             if options.enable_validation {
                 instance_extension_names.push(ash::extensions::ext::DebugReport::name().as_ptr());
             }
@@ -87,19 +86,7 @@ impl Device {
             entry.create_instance(&instance_create_info.build(), None).unwrap()
         };
 
-        let (surface_loader, surface_khr) = match &surface_mode {
-            SurfaceMode::WindowSurface(create_surface) => {
-                let surface_loader = ash::extensions::khr::Surface::new(&entry, &instance);
-                let surface_khr = create_surface(&entry, &instance);
-
-                (Some(surface_loader), surface_khr)
-            }
-
-            SurfaceMode::Headless(create_surface) => {
-                let surface_khr = create_surface(&entry, &instance);
-                (None, surface_khr)
-            }
-        };
+        let (surface_loader, surface_khr) = create_surface(&entry, &instance);
 
         let debug_report = if options.enable_validation {
             let loader = ash::extensions::ext::DebugReport::new(&entry, &instance);
@@ -224,15 +211,15 @@ impl Device {
                 .queue_priorities(&queue_priorities)
                 .build()];
 
-            let mut device_extension_names = Vec::with_capacity(7);
+            let mut device_extension_names = Vec::with_capacity(device_extensions.len() + 6);
+            for ext in device_extensions {
+                device_extension_names.push(ext.as_ptr());
+            }
+
             device_extension_names.push(vk::KhrDrawIndirectCountFn::name().as_ptr());
 
             // TODO: enable uint8 index format when AMD starts supporting it
             // device_extension_names.push(vk::ExtIndexTypeUint8Fn::name().as_ptr());
-
-            if let SurfaceMode::WindowSurface(_) = surface_mode {
-                device_extension_names.push(ash::extensions::khr::Swapchain::name().as_ptr());
-            }
 
             // TODO: enable uint8 index format when AMD starts supporting it
             // let mut uint8_indexing = vk::PhysicalDeviceIndexTypeUint8FeaturesEXT::builder()
@@ -418,32 +405,6 @@ struct InternalQueue {
 struct DebugReportCallback {
     loader: ash::extensions::ext::DebugReport,
     callback: vk::DebugReportCallbackEXT,
-}
-
-const PLATFORM_EXTENSION_NAME_COUNT: usize = 2;
-
-#[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] {
-    [
-        ash::extensions::khr::Surface::name().as_ptr(),
-        ash::extensions::khr::XlibSurface::name().as_ptr(),
-    ]
-}
-
-#[cfg(target_os = "macos")]
-fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] {
-    [
-        ash::extensions::khr::Surface::name().as_ptr(),
-        ash::extensions::khr::MacOSSurface::name().as_ptr(),
-    ]
-}
-
-#[cfg(all(windows))]
-fn get_platform_extension_names() -> [*const i8; PLATFORM_EXTENSION_NAME_COUNT] {
-    [
-        ash::extensions::khr::Surface::name().as_ptr(),
-        ash::extensions::khr::Win32Surface::name().as_ptr(),
-    ]
 }
 
 unsafe extern "system" fn vulkan_debug_callback(

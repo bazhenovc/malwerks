@@ -19,12 +19,68 @@ pub struct CameraState {
     rotation_speed: f32,
     rotation_x: f32,
     rotation_y: f32,
+
+    cache_file_path: Option<std::path::PathBuf>,
+}
+
+impl Drop for CameraState {
+    fn drop(&mut self) {
+        if let Some(cache_file_path) = &self.cache_file_path {
+            if let Ok(mut cache_file) = std::fs::OpenOptions::new()
+                .read(false)
+                .write(true)
+                .truncate(true)
+                .create(true)
+                .open(cache_file_path)
+            {
+                use byteorder::*;
+
+                cache_file.write_f32::<NativeEndian>(self.camera.position.x).unwrap();
+                cache_file.write_f32::<NativeEndian>(self.camera.position.y).unwrap();
+                cache_file.write_f32::<NativeEndian>(self.camera.position.z).unwrap();
+                cache_file.write_f32::<NativeEndian>(self.camera.orientation.s).unwrap();
+                cache_file
+                    .write_f32::<NativeEndian>(self.camera.orientation.bv.xy)
+                    .unwrap();
+                cache_file
+                    .write_f32::<NativeEndian>(self.camera.orientation.bv.xz)
+                    .unwrap();
+                cache_file
+                    .write_f32::<NativeEndian>(self.camera.orientation.bv.yz)
+                    .unwrap();
+            }
+        }
+    }
 }
 
 impl CameraState {
-    pub fn new(viewport: Viewport) -> Self {
+    pub fn new(camera_cache_path: Option<&std::path::Path>, viewport: Viewport) -> Self {
+        let mut camera = Camera::new(45.0, viewport);
+
+        let cache_file_path = if let Some(camera_cache_path) = camera_cache_path {
+            if let Ok(mut cache_file) = std::fs::OpenOptions::new()
+                .read(true)
+                .write(false)
+                .open(camera_cache_path)
+            {
+                use byteorder::*;
+
+                camera.position.x = cache_file.read_f32::<NativeEndian>().unwrap();
+                camera.position.y = cache_file.read_f32::<NativeEndian>().unwrap();
+                camera.position.z = cache_file.read_f32::<NativeEndian>().unwrap();
+                camera.orientation.s = cache_file.read_f32::<NativeEndian>().unwrap();
+                camera.orientation.bv.xy = cache_file.read_f32::<NativeEndian>().unwrap();
+                camera.orientation.bv.xz = cache_file.read_f32::<NativeEndian>().unwrap();
+                camera.orientation.bv.yz = cache_file.read_f32::<NativeEndian>().unwrap();
+            }
+
+            Some(camera_cache_path.to_path_buf())
+        } else {
+            None
+        };
+
         Self {
-            camera: Camera::new(45.0, viewport),
+            camera,
 
             movement_speed: 10.0,
             forward_movement: 0.0,
@@ -34,6 +90,8 @@ impl CameraState {
             rotation_speed: 50.0,
             rotation_x: 0.0,
             rotation_y: 0.0,
+
+            cache_file_path,
         }
     }
 

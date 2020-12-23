@@ -204,6 +204,11 @@ pub fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     entry: &E,
     instance: &I,
     window: &winit::window::Window,
-) -> Result<vk::SurfaceKHR, vk::Result> {
-    unsafe { ash_window::create_surface(entry, instance, window, None) }
+) -> Result<(Option<ash::extensions::khr::Surface>, vk::SurfaceKHR), vk::Result> {
+    unsafe {
+        let surface_loader = ash::extensions::khr::Surface::new(entry, instance);
+        let surface = ash_window::create_surface(entry, instance, window, None)?;
+
+        Ok((Some(surface_loader), surface))
+    }
 }

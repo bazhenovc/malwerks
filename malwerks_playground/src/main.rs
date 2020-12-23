@@ -96,10 +96,15 @@ impl Drop for Game {
 
 impl Game {
     fn new(window: &winit::window::Window, base_path: &std::path::Path, command_line: CommandLineOptions) -> Self {
+        let instance_extensions = ash_window::enumerate_required_extensions(window).expect("no window extensions");
+        let device_extensions = [ash::extensions::khr::Swapchain::name()];
+
         let mut device = Device::new(
-            SurfaceMode::WindowSurface(|entry: &ash::Entry, instance: &ash::Instance| {
+            &instance_extensions,
+            &device_extensions,
+            |entry: &ash::Entry, instance: &ash::Instance| {
                 surface_winit::create_surface(entry, instance, window).expect("failed to create KHR surface")
-            }),
+            },
             DeviceOptions {
                 enable_validation: command_line.enable_validation,
                 // enable_ray_tracing_nv: true,

@@ -316,7 +316,9 @@ fn test_render_passes() {
     log::info!("base path set to {:?}", &base_path);
 
     let mut device = Device::new(
-        SurfaceMode::Headless(|_: &ash::Entry, _: &ash::Instance| vk::SurfaceKHR::null()),
+        &[],
+        &[],
+        |_: &ash::Entry, _: &ash::Instance| (None, vk::SurfaceKHR::null()),
         DeviceOptions {
             enable_validation: true,
             enable_render_target_export: true,
