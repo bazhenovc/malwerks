@@ -37,6 +37,10 @@ path = "src/convert_probe.rs"
 name = "convert_metallic_roughness"
 path = "src/convert_metallic_roughness.rs"
 
+[[bin]]
+name = "invert_normal_map"
+path = "src/invert_normal_map.rs"
+
 # [[bin]]
 # name = "bake_lightmaps"
 # path = "src/bake_lightmaps.rs"
