@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Kyrylo Bazhenov
+// Copyright (c) 2020-2021 Kyrylo Bazhenov
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -355,20 +355,18 @@ impl PbrForwardLit {
         bundle_loader: &mut BundleLoader,
         gltf_file: &std::path::Path,
         bundle_file: &std::path::Path,
+        shader_file: &std::path::Path,
         device: &Device,
         factory: &mut DeviceFactory,
         queue: &mut DeviceQueue,
     ) {
         log::info!("adding render bundle \"{}\"", bundle_name);
-        let shader_path = bundle_loader
-            .get_base_path()
-            .join("malwerks_shaders/gltf_pbr_material.glsl");
 
         let resource_bundle = bundle_loader.request_bundle(gltf_file, bundle_file, device, factory, queue);
         let shader_module_bundle = bundle_loader.compile_shader_module_bundle(
             &resource_bundle,
             &bundle_file.with_extension("pbr_forward_lit"),
-            &shader_path,
+            &shader_file,
             factory,
         );
         let pipeline_bundle =

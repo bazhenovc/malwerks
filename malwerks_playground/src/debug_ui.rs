@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Kyrylo Bazhenov
+// Copyright (c) 2020-2021 Kyrylo Bazhenov
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -110,6 +110,10 @@ pub fn show_pbr_forward_lit_window<'a>(
                                 bundle_loader,
                                 &assets_folder.join($gltf_path),
                                 &assets_folder.join($bundle_path),
+                                &assets_folder
+                                    .join("..")
+                                    .join("malwerks_shaders")
+                                    .join("gltf_pbr_material.glsl"),
                                 device,
                                 factory,
                                 queue,

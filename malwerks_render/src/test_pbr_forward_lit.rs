@@ -1,4 +1,4 @@
-// Copyright (c) 2020 Kyrylo Bazhenov
+// Copyright (c) 2020-2021 Kyrylo Bazhenov
 //
 // This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
 // If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -360,6 +360,7 @@ fn test_render_passes() {
             &mut bundle_loader,
             &base_path.join("assets").join("lantern/Lantern.gltf"),
             &base_path.join("assets").join("Lantern.resource_bundle"),
+            &base_path.join("malwerks_shaders").join("gltf_pbr_material.glsl"),
             &device,
             &mut factory,
             &mut queue,
